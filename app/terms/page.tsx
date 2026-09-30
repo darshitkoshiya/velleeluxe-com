@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalPage, LegalSection } from '@/components/layout/LegalPage';
-import { SUPPORT_EMAIL } from '@/lib/utils';
+const SUPPORT_EMAIL = 'hello@velleeluxe.com';
 
 export const metadata: Metadata = {
   title: 'Terms & Conditions',
@@ -13,7 +13,7 @@ export default function TermsPage() {
   return (
     <LegalPage
       title="Terms & Conditions"
-      lastUpdated="30 September 2026"
+      lastUpdated="October 2026"
       intro="These terms apply when you browse or buy from velleeluxe.com. By using the site or placing an order, you agree to them."
     >
       <LegalSection title="About us">
@@ -31,13 +31,27 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="Products and pricing">
+      <LegalSection title="Use of the website">
+        <p>
+          You may use this website to browse our products and place orders for personal, non-commercial use. We may
+          update, suspend or withdraw any part of the site at any time, and we do not guarantee that it will always be
+          available or error-free.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Product descriptions">
+        <p>
+          We take care to describe and photograph every product accurately, including its fabric, fit and measurements.
+          However, colours can look different on different screens, and natural fabrics such as linen may show slight
+          variations in texture and shade — these are part of the character of the cloth, not defects. If a product you
+          receive is materially different from its description, you may return it under our{' '}
+          <Link href="/return-policy">Return Policy</Link>.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Pricing">
         <ul>
-          <li>All prices are in Indian Rupees (₹) and include applicable taxes (GST) unless stated otherwise.</li>
-          <li>
-            We try to show colours and details accurately, but screens vary and slight differences from product photos
-            may occur.
-          </li>
+          <li>All prices are listed in Indian Rupees (₹ INR) only and are inclusive of GST.</li>
           <li>
             We may change prices or discontinue products at any time. The price you pay is the price shown at checkout
             when you place your order.
@@ -49,11 +63,16 @@ export default function TermsPage() {
         </ul>
       </LegalSection>
 
-      <LegalSection title="Orders">
+      <LegalSection title="Order acceptance and cancellation">
         <p>
           Placing an order is an offer to buy. We accept your order when we send an order confirmation email. We may
           decline or cancel an order — for example, if an item becomes unavailable, if we cannot verify payment, or if we
-          suspect fraud — in which case any payment made will be refunded in full.
+          suspect fraud — in which case any payment made will be refunded in full to the original payment method.
+        </p>
+        <p>
+          You can cancel your order free of charge at any time before it is shipped by writing to us with your order
+          number. Once an order has shipped, it can no longer be cancelled, but you may return it under our{' '}
+          <Link href="/return-policy">Return Policy</Link>.
         </p>
       </LegalSection>
 
@@ -104,8 +123,9 @@ export default function TermsPage() {
       <LegalSection title="Governing law and disputes">
         <p>
           These terms are governed by the laws of India. We will always try to resolve concerns directly first — please
-          write to us. Any dispute that cannot be resolved amicably is subject to the jurisdiction of the competent courts
-          in India, without prejudice to your right to approach a consumer commission.
+          write to us. Any dispute that cannot be resolved amicably is subject to the exclusive jurisdiction of the
+          competent courts in Gujarat, India, without prejudice to your right to approach a consumer commission under the
+          Consumer Protection Act, 2019.
         </p>
       </LegalSection>
 

@@ -1,20 +1,20 @@
 'use client';
 
-import { useWishlist } from '@/hooks/useWishlist';
+import { useWishlist } from '@/lib/wishlist-store';
 import { HeartIcon } from '@/components/ui/Icons';
+import type { Product } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface WishlistButtonProps {
-  productId: string;
-  productName: string;
+  product: Product;
   className?: string;
   /** Show "Save" / "Saved" text next to the icon. */
   withLabel?: boolean;
 }
 
-export function WishlistButton({ productId, productName, className, withLabel = false }: WishlistButtonProps) {
-  const { isWishlisted, toggle } = useWishlist();
-  const active = isWishlisted(productId);
+export function WishlistButton({ product, className, withLabel = false }: WishlistButtonProps) {
+  const { isWishlisted, toggleItem } = useWishlist();
+  const active = isWishlisted(product.id);
 
   return (
     <button
@@ -22,10 +22,10 @@ export function WishlistButton({ productId, productName, className, withLabel = 
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        void toggle(productId);
+        toggleItem(product);
       }}
       aria-pressed={active}
-      aria-label={active ? `Remove ${productName} from wishlist` : `Add ${productName} to wishlist`}
+      aria-label={active ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
       className={cn(
         'inline-flex items-center justify-center gap-2 transition-colors hover:text-persimmon',
         active ? 'text-persimmon' : 'text-ink',

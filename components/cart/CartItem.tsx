@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { useCart } from '@/hooks/useCart';
 import { CloseIcon, MinusIcon, PlusIcon } from '@/components/ui/Icons';
 import type { CartItem as CartItemType } from '@/lib/types';
-import { cn, formatPrice, MAX_QUANTITY_PER_ITEM } from '@/lib/utils';
+import { cn, formatPrice, MAX_QUANTITY_PER_ITEM, titleCase } from '@/lib/utils';
 
 interface CartItemProps {
   item: CartItemType;
-  /** "compact" = 60×80 image (drawer), "large" = 96×128 image (cart page). */
+  /** "compact" = 80×107 image (drawer), "large" = 96×128 image (cart page). */
   variant?: 'compact' | 'large';
   onNavigate?: () => void;
 }
@@ -28,10 +28,10 @@ export function CartItem({ item, variant = 'compact', onNavigate }: CartItemProp
       <Link
         href={`/product/${product.slug}`}
         onClick={onNavigate}
-        className={cn('relative shrink-0 overflow-hidden bg-sand', large ? 'h-32 w-24' : 'h-20 w-[60px]')}
+        className={cn('relative shrink-0 overflow-hidden bg-sand', large ? 'h-32 w-24' : 'h-[107px] w-20')}
       >
         {image ? (
-          <Image src={image} alt={product.name} fill sizes={large ? '96px' : '60px'} className="object-cover" />
+          <Image src={image} alt={product.name} fill sizes={large ? '96px' : '80px'} className="object-cover" />
         ) : null}
       </Link>
 
@@ -45,7 +45,11 @@ export function CartItem({ item, variant = 'compact', onNavigate }: CartItemProp
             >
               {product.name}
             </Link>
-            <p className="mt-1 font-sans text-xs text-slateGrey">Size {size}</p>
+            <p className="mt-1 font-sans text-xs text-slateGrey">
+              {product.colour ? <>{titleCase(product.colour)} <span aria-hidden="true">/</span> </> : null}
+              Size {size}
+            </p>
+            {!large ? <p className="mt-1 font-sans text-xs text-slateGrey">{formatPrice(product.price)} each</p> : null}
           </div>
           <button
             type="button"

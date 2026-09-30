@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { LegalPage, LegalSection } from '@/components/layout/LegalPage';
-import { SUPPORT_EMAIL } from '@/lib/utils';
+const SUPPORT_EMAIL = 'hello@velleeluxe.com';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -12,7 +12,7 @@ export default function PrivacyPolicyPage() {
   return (
     <LegalPage
       title="Privacy Policy"
-      lastUpdated="30 September 2026"
+      lastUpdated="October 2026"
       intro="Your privacy matters to us. This policy explains what personal information we collect when you use velleeluxe.com, why we collect it, and the choices you have."
     >
       <LegalSection title="Who we are">
@@ -57,22 +57,31 @@ export default function PrivacyPolicyPage() {
           <li>To send order confirmations, shipping updates and replies to your questions;</li>
           <li>To maintain your account, order history and wishlist;</li>
           <li>To prevent fraud and keep our store secure;</li>
+          <li>To understand how our website is used, so we can improve our products and service;</li>
           <li>To comply with legal, tax and accounting obligations.</li>
         </ul>
         <p>
           We process your information on the basis of your consent, to perform our contract with you when you place an
-          order, and to meet our legal obligations. We do not send marketing emails unless you have opted in, and we do
-          not sell your personal information.
+          order, and to meet our legal obligations. We do not send marketing emails unless you have opted in.
         </p>
       </LegalSection>
 
       <LegalSection title="Who we share it with">
-        <p>We share personal information only with service providers who help us run the store, and only as needed:</p>
+        <p>
+          <strong>We never sell, rent or trade your personal information to third parties.</strong> We share it only with
+          service providers who help us run the store, and only as much as they need to do their job:
+        </p>
         <ul>
+          <li>
+            <strong>Razorpay</strong> — to process your payment securely. Razorpay is PCI-DSS compliant and handles your
+            card, UPI and bank details directly;
+          </li>
+          <li>
+            <strong>Shiprocket</strong> and its courier partners — your name, phone number and delivery address, to ship
+            your order and send tracking updates;
+          </li>
           <li>Google Firebase and Google Workspace (accounts, order records);</li>
-          <li>Razorpay (payment processing);</li>
           <li>Resend (transactional email delivery);</li>
-          <li>Courier and logistics partners (to deliver your order);</li>
           <li>Our hosting provider (to serve the website).</li>
         </ul>
         <p>
@@ -115,9 +124,20 @@ export default function PrivacyPolicyPage() {
       </LegalSection>
 
       <LegalSection title="Cookies and local storage">
+        <p>We use a small number of cookies and similar browser storage:</p>
+        <ul>
+          <li>
+            <strong>Session and essential cookies</strong> — to keep you signed in, remember your cart and wishlist, and
+            keep checkout secure. The site cannot work properly without these.
+          </li>
+          <li>
+            <strong>Analytics cookies</strong> — to understand, in aggregate, which pages are visited and how the site
+            performs, so we can improve it. These do not identify you personally.
+          </li>
+        </ul>
         <p>
-          We use essential browser storage to keep you signed in and remember your cart and wishlist. We do not use
-          advertising cookies. You can clear this storage in your browser settings at any time.
+          We do not use advertising cookies. You can block or clear cookies in your browser settings at any time, though
+          some parts of the site may not work as expected without essential cookies.
         </p>
       </LegalSection>
 
@@ -133,6 +153,13 @@ export default function PrivacyPolicyPage() {
           In accordance with the Information Technology Act, 2000 and the Consumer Protection (E-Commerce) Rules, 2020,
           you may contact our Grievance Officer at <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. We will
           acknowledge your complaint within 48 hours and resolve it within one month.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Contact us">
+        <p>
+          For any question about this policy or your personal information, write to us at{' '}
+          <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
         </p>
       </LegalSection>
 

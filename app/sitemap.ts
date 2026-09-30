@@ -4,6 +4,7 @@ import { SITE_URL } from '@/lib/utils';
 
 export const revalidate = 3600;
 
+// /privacy and /returns are redirect aliases, so the canonical policy URLs are listed instead.
 const STATIC_PATHS = [
   '',
   '/shop',
@@ -25,7 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${SITE_URL}${path}`,
       lastModified: now,
       changeFrequency: (path === '' || path === '/shop' ? 'daily' : 'monthly') as 'daily' | 'monthly',
-      priority: path === '' ? 1 : path === '/shop' ? 0.9 : 0.5,
+      priority: path === '' ? 1 : path === '/shop' ? 0.9 : 0.7,
     })),
     ...products.map((product) => ({
       url: `${SITE_URL}/product/${product.slug}`,

@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
 import SiteChrome from '@/components/layout/SiteChrome';
-import { SITE_URL } from '@/lib/utils';
+import { FREE_SHIPPING_THRESHOLD, SITE_URL, formatPrice } from '@/lib/utils';
 import './globals.css';
 
 const dmSans = DM_Sans({
@@ -23,29 +23,51 @@ const newsreader = Newsreader({
   display: 'swap',
 });
 
-const DESCRIPTION =
-  'Premium quality shirts crafted for the modern Indian man. Shop linen, cotton and formal shirts at Vellee Luxe.';
+const DEFAULT_TITLE = "Vellee Luxe — Premium Men's Shirts";
+
+// Threshold comes from lib/utils so the copy always matches what checkout charges.
+const DESCRIPTION = `Discover premium men's shirts crafted for modern India. Shop linen, cotton, and Oxford weave shirts with free shipping over ${formatPrice(FREE_SHIPPING_THRESHOLD)}.`;
+
+// Placeholder until a real 1200x630 image is added at public/og-image.jpg.
+const OG_IMAGE = {
+  url: 'https://velleeluxe.com/og-image.jpg',
+  width: 1200,
+  height: 630,
+  alt: "Vellee Luxe — Premium Men's Shirts",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     template: '%s | Vellee Luxe',
-    default: 'Vellee Luxe — Premium Shirts for Modern India',
+    default: DEFAULT_TITLE,
   },
   description: DESCRIPTION,
   applicationName: 'Vellee Luxe',
+  keywords: [
+    "men's shirts",
+    'premium shirts India',
+    'linen shirts for men',
+    'cotton shirts for men',
+    'Oxford shirts',
+    'luxury menswear India',
+    'buy shirts online India',
+    'Vellee Luxe',
+  ],
   openGraph: {
     siteName: 'Vellee Luxe',
     locale: 'en_IN',
     type: 'website',
     url: SITE_URL,
-    title: 'Vellee Luxe — Premium Shirts for Modern India',
+    title: DEFAULT_TITLE,
     description: DESCRIPTION,
+    images: [OG_IMAGE],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vellee Luxe — Premium Shirts for Modern India',
+    title: DEFAULT_TITLE,
     description: DESCRIPTION,
+    images: [OG_IMAGE.url],
   },
 };
 

@@ -36,13 +36,13 @@ export function CartDrawer() {
       >
         <div className="flex h-14 items-center justify-between border-b border-sand px-5 md:h-[60px]">
           <h2 id="cart-drawer-title" className="label-caps text-ink">
-            Your Cart {totalItems > 0 ? `(${totalItems})` : ''}
+            Your Bag {totalItems > 0 ? `(${totalItems})` : ''}
           </h2>
           <button
             type="button"
             onClick={closeDrawer}
             className="-mr-2 inline-flex h-10 w-10 items-center justify-center text-ink hover:text-persimmon"
-            aria-label="Close cart"
+            aria-label="Close bag"
             data-autofocus
           >
             <CloseIcon />
@@ -51,7 +51,7 @@ export function CartDrawer() {
 
         {items.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-            <p className="font-serif text-xl italic text-ink">Your cart is empty.</p>
+            <p className="font-serif text-xl italic text-ink">Your bag is empty.</p>
             <p className="mt-2 font-serif text-slateGrey">Well-made shirts are waiting.</p>
             <Link href="/shop" onClick={closeDrawer} className={buttonClasses({ variant: 'outline', className: 'mt-8' })}>
               Shop Shirts
@@ -59,15 +59,23 @@ export function CartDrawer() {
           </div>
         ) : (
           <>
-            {remainingForFreeShipping > 0 ? (
-              <p className="border-b border-sand bg-sand/50 px-5 py-3 font-sans text-xs text-ink">
-                Add {formatPrice(remainingForFreeShipping)} more for free shipping.
+            <div className="border-b border-sand bg-surface px-5 py-3">
+              <p className="font-sans text-xs text-ink">
+                {remainingForFreeShipping > 0 ? (
+                  <>
+                    Add <span className="font-medium">{formatPrice(remainingForFreeShipping)}</span> more for free shipping.
+                  </>
+                ) : (
+                  'Your order ships free.'
+                )}
               </p>
-            ) : (
-              <p className="border-b border-sand bg-sand/50 px-5 py-3 font-sans text-xs text-ink">
-                Your order ships free.
-              </p>
-            )}
+              <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-sand" aria-hidden="true">
+                <div
+                  className="h-full rounded-full bg-persimmon transition-all duration-500 ease-out"
+                  style={{ width: `${Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)}%` }}
+                />
+              </div>
+            </div>
 
             <ul className="flex-1 overflow-y-auto px-5" aria-label="Cart items">
               {items.map((item) => (
@@ -83,9 +91,12 @@ export function CartDrawer() {
               <p className="mt-1 font-serif text-sm italic text-slateGrey">Shipping calculated at checkout.</p>
               <div className="mt-5 space-y-2">
                 <Link href="/checkout" onClick={closeDrawer} className={buttonClasses({ variant: 'primary', size: 'lg', width: 'full' })}>
-                  Proceed to Checkout
+                  Checkout
                 </Link>
-                <Button variant="ghost" width="full" onClick={closeDrawer}>
+                <Link href="/cart" onClick={closeDrawer} className={buttonClasses({ variant: 'outline', size: 'md', width: 'full' })}>
+                  View Cart
+                </Link>
+                <Button variant="ghost" size="sm" width="full" onClick={closeDrawer}>
                   Continue Shopping
                 </Button>
               </div>
