@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Firestore security rules for Vellee Luxe.
+// Publish these in Firebase Console > Firestore Database > Rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Orders are created and updated only by the server (Firebase Admin SDK,
+    // which bypasses these rules). Signed-in customers may read their own orders.
+    match /orders/{orderId} {
+      allow read: if request.auth != null && resource.data.customerId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Each customer can read and write only their own profile and wishlist.
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
