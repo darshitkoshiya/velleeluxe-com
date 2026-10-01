@@ -16,20 +16,39 @@ import {
   MAX_DAMAGE_PHOTOS,
   MAX_DAMAGE_PHOTOS_TOTAL_CHARS,
   RETURN_REASON_LABELS,
-  RETURN_REASONS,
   RETURN_TYPE_LABELS,
-  typeForReason,
 } from '@/lib/returns-shared';
 import type { Order, OrderItem, Product, ReturnReason, ReturnRequest, ReturnType as RequestType } from '@/lib/types';
 import { cn, formatPrice } from '@/lib/utils';
 
-type Step = 'reason' | 'details' | 'confirm';
+type Step = 'type_select' | 'exchange_size' | 'photos' | 'return_reason' | 'confirm';
+type Mode = 'exchange' | 'return';
+/** Which return card the customer picked (Defective and Damaged share one API reason). */
+type ReturnKind = 'defective' | 'damaged' | 'wrong';
 
-const REASON_HINTS: Record<ReturnReason, string> = {
-  size_doesnt_fit: 'Exchange for another size, or get store credit if yours is not available.',
-  wrong_item: 'You received a different item from the one you ordered. Photos required.',
-  damaged_defective: 'The item arrived with damage or a defect. Photos required.',
-};
+const RETURN_KIND_OPTIONS: { kind: ReturnKind; title: string; description: string; reason: ReturnReason }[] = [
+  {
+    kind: 'defective',
+    title: 'Defective',
+    description: 'The item has a manufacturing fault, such as a broken zip or faulty stitching.',
+    reason: 'damaged_defective',
+  },
+  {
+    kind: 'damaged',
+    title: 'Damaged',
+    description: 'The item arrived torn, stained or otherwise damaged.',
+    reason: 'damaged_defective',
+  },
+  {
+    kind: 'wrong',
+    title: 'Wrong product received',
+    description: 'You received a different item from the one you ordered.',
+    reason: 'wrong_item',
+  },
+];
+
+const NO_STOCK_MESSAGE =
+  "Your size is not in stock right now. Upload photos of the product — once we receive and inspect it, store credit will be added to your account. You can use it to buy anything on the store, including this item when it's back in stock.";
 
 /** Per-photo size budget so all photos fit in one Firestore document. */
 const PHOTO_CHAR_BUDGET = Math.floor(MAX_DAMAGE_PHOTOS_TOTAL_CHARS / MAX_DAMAGE_PHOTOS);
@@ -92,7 +111,9 @@ export default function NewReturnPage() {
   const [productLoaded, setProductLoaded] = useState(false);
   const [state, setState] = useState<'loading' | 'ready' | 'not-found' | 'closed' | 'error'>('loading');
 
-  const [step, setStep] = useState<Step>('reason');
+  const [step, setStep] = useState<Step>('type_select');
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [returnKind, setReturnKind] = useState<ReturnKind | null>(null);
   const [reason, setReason] = useState<ReturnReason | null>(null);
   const [type, setType] = useState<RequestType | null>(null);
   const [requestedSize, setRequestedSize] = useState('');
@@ -169,19 +190,60 @@ export default function NewReturnPage() {
   const productAvailable = product !== null && product.status === 'live' && (product.stock === 'unlimited' || product.stock > 0);
   const sizeOptions = productAvailable ? product.sizes.filter((size) => size.toUpperCase() !== item.size.toUpperCase()) : [];
 
-  const chooseReason = (next: ReturnReason) => {
-    setReason(next);
-    setType(typeForReason(next));
+  // Step 1: Exchange or Return
+  const chooseExchange = () => {
+    setMode('exchange');
+    setReturnKind(null);
+    setReason('size_doesnt_fit');
     setRequestedSize('');
     setError(null);
-    setStep('details');
+    // No other size in stock: skip straight to the store-credit photo step.
+    if (productLoaded && sizeOptions.length === 0) {
+      setType('store_credit');
+      setStep('photos');
+      return;
+    }
+    setType('size_exchange');
+    setStep('exchange_size');
   };
 
-  const chooseStoreCredit = () => {
+  const chooseReturn = () => {
+    setMode('return');
+    setReason(null);
+    setType(null);
+    setRequestedSize('');
+    setError(null);
+    setStep('return_reason');
+  };
+
+  // Exchange path
+  const continueFromSize = () => {
+    setError(null);
+    setReason('size_doesnt_fit');
+    setType('size_exchange');
+    if (!requestedSize) {
+      setError('Please choose the size you would like.');
+      return;
+    }
+    setStep('confirm');
+  };
+
+  const chooseSizeNotAvailable = () => {
+    setReason('size_doesnt_fit');
     setType('store_credit');
     setRequestedSize('');
     setError(null);
-    setStep('confirm');
+    setStep('photos');
+  };
+
+  // Return path
+  const chooseReturnKind = (kind: ReturnKind, nextReason: ReturnReason) => {
+    setReturnKind(kind);
+    setReason(nextReason);
+    setType('damage_defect');
+    setRequestedSize('');
+    setError(null);
+    setStep('photos');
   };
 
   const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -214,17 +276,13 @@ export default function NewReturnPage() {
     setProcessing(false);
   };
 
-  const continueFromDetails = () => {
+  const continueFromPhotos = () => {
     setError(null);
-    if (type === 'size_exchange' && !requestedSize) {
-      setError('Please choose the size you would like.');
-      return;
-    }
-    if (type === 'damage_defect' && photos.length === 0) {
+    if (photos.length === 0) {
       setError('Please add at least one photo.');
       return;
     }
-    if (type === 'damage_defect' && description.trim().length < 5) {
+    if (description.trim().length < 5) {
       setError('Please describe the issue in a few words.');
       return;
     }
@@ -246,7 +304,7 @@ export default function NewReturnPage() {
           reason,
           type,
           requestedSize: type === 'size_exchange' ? requestedSize : undefined,
-          damagePhotoUrls: type === 'damage_defect' ? photos : undefined,
+          damagePhotoUrls: (type === 'damage_defect' || type === 'store_credit') && photos.length > 0 ? photos : undefined,
           description: description.trim() || undefined,
         }),
       });
@@ -262,12 +320,63 @@ export default function NewReturnPage() {
   const goBack = () => {
     setError(null);
     if (step === 'confirm') {
-      if (type === 'store_credit') setType('size_exchange');
-      setStep('details');
-    } else {
-      setStep('reason');
+      if (type === 'size_exchange') setStep('exchange_size');
+      else setStep('photos');
+    } else if (step === 'photos') {
+      if (mode === 'exchange') {
+        setType('size_exchange');
+        setStep('exchange_size');
+      } else {
+        setStep('return_reason');
+      }
+    } else if (step === 'exchange_size' || step === 'return_reason') {
+      setStep('type_select');
     }
   };
+
+  const isExchangeNoStock = mode === 'exchange' && type === 'store_credit';
+  const sizesUnavailable = productLoaded && sizeOptions.length === 0;
+
+  const photosHeading = isExchangeNoStock
+    ? 'Photos of the product'
+    : returnKind === 'wrong'
+      ? 'Photos of the item you received'
+      : returnKind === 'damaged'
+        ? 'Photos of the damage'
+        : 'Photos of the defect';
+
+  const photosHint = isExchangeNoStock
+    ? ' of the product and its label.'
+    : returnKind === 'wrong'
+      ? ' of the item and its label.'
+      : returnKind === 'damaged'
+        ? ' showing the damage, and the label.'
+        : ' showing the defect, and the label.';
+
+  const descriptionLabel = isExchangeNoStock ? 'Describe the fit issue' : 'Describe the issue';
+
+  const descriptionPlaceholder = isExchangeNoStock
+    ? 'e.g. Size M is too tight across the shoulders. I would like a size L.'
+    : returnKind === 'wrong'
+      ? 'e.g. I ordered a white oxford item but received a blue linen item.'
+      : returnKind === 'damaged'
+        ? 'e.g. Torn seam on the left sleeve, noticed on opening the parcel.'
+        : 'e.g. The zip does not close properly and the stitching is coming loose.';
+
+  const requestLabel = !type
+    ? ''
+    : mode === 'exchange' && type === 'size_exchange'
+      ? RETURN_TYPE_LABELS[type]
+      : mode === 'exchange'
+        ? 'Exchange (size not in stock)'
+        : 'Return';
+
+  const reasonLabel =
+    mode === 'return' && returnKind
+      ? RETURN_KIND_OPTIONS.find((option) => option.kind === returnKind)?.title ?? (reason ? RETURN_REASON_LABELS[reason] : '')
+      : reason
+        ? RETURN_REASON_LABELS[reason]
+        : '';
 
   return (
     <div className="bg-linen">
@@ -290,25 +399,27 @@ export default function NewReturnPage() {
             </div>
           </div>
 
-          {/* Step 1: reason */}
-          {step === 'reason' ? (
+          {/* Step 1: exchange or return */}
+          {step === 'type_select' ? (
             <section className="mt-10">
-              <h2 className="label-caps text-ink">Why are you returning this?</h2>
+              <h2 className="label-caps text-ink">What would you like to do?</h2>
               <div className="mt-5 grid gap-3">
-                {RETURN_REASONS.map((value) => (
-                  <OptionCard
-                    key={value}
-                    title={RETURN_REASON_LABELS[value]}
-                    description={REASON_HINTS[value]}
-                    onClick={() => chooseReason(value)}
-                  />
-                ))}
+                <OptionCard
+                  title="Exchange"
+                  description="Swap for a different size. If your size is not in stock, you get store credit instead."
+                  onClick={chooseExchange}
+                />
+                <OptionCard
+                  title="Return"
+                  description="The item is defective, damaged, or not what you ordered."
+                  onClick={chooseReturn}
+                />
               </div>
             </section>
           ) : null}
 
-          {/* Step 2a: size */}
-          {step === 'details' && type === 'size_exchange' ? (
+          {/* Step 2 (exchange): choose new size */}
+          {step === 'exchange_size' ? (
             <section className="mt-10">
               <h2 className="label-caps text-ink">Choose your new size</h2>
               {!productLoaded ? (
@@ -333,32 +444,31 @@ export default function NewReturnPage() {
                     ))}
                   </div>
                   <p className="mt-3 font-sans text-xs text-ink-muted">Only sizes currently in stock are shown.</p>
+                  <button
+                    type="button"
+                    onClick={chooseSizeNotAvailable}
+                    className="mt-6 font-sans text-xs uppercase tracking-[0.14em] text-ink underline underline-offset-4 hover:text-accent"
+                  >
+                    My size is not available
+                  </button>
                 </>
               ) : (
-                <p className="mt-5 border border-sand bg-surface p-4 font-sans text-sm text-ink">
-                  Other sizes of this product are not in stock right now. You can request store credit instead.
-                </p>
+                <p className="mt-5 border border-sand bg-surface p-4 font-sans text-sm text-ink">{NO_STOCK_MESSAGE}</p>
               )}
-
-              <button
-                type="button"
-                onClick={chooseStoreCredit}
-                className="mt-6 font-sans text-xs uppercase tracking-[0.14em] text-ink underline underline-offset-4 hover:text-accent"
-              >
-                My size is not available
-              </button>
             </section>
           ) : null}
 
-          {/* Step 2b: photos */}
-          {step === 'details' && type === 'damage_defect' ? (
+          {/* Photos: exchange with no stock, or any return */}
+          {step === 'photos' ? (
             <section className="mt-10 space-y-6">
+              {isExchangeNoStock ? (
+                <p className="border border-sand bg-surface p-4 font-sans text-sm text-ink">{NO_STOCK_MESSAGE}</p>
+              ) : null}
               <div>
-                <h2 className="label-caps text-ink">{reason === 'wrong_item' ? 'Photos of the item you received' : 'Photos of the issue'}</h2>
+                <h2 className="label-caps text-ink">{photosHeading}</h2>
                 <p className="mt-2 font-sans text-sm text-ink-muted">
                   Add 1 to {MAX_DAMAGE_PHOTOS} clear photos
-                  {reason === 'wrong_item' ? ' of the item and its label.' : ' showing the damage or defect, and the label.'} Photos
-                  are checked automatically against your order.
+                  {photosHint}
                 </p>
                 <ul className="mt-4 flex flex-wrap gap-3">
                   {photos.map((photo, index) => (
@@ -400,32 +510,45 @@ export default function NewReturnPage() {
                 />
               </div>
               <Textarea
-                label="Describe the issue"
+                label={descriptionLabel}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
                 maxLength={1000}
                 rows={4}
-                placeholder={
-                  reason === 'wrong_item'
-                    ? 'e.g. I ordered a white oxford item but received a blue linen item.'
-                    : 'e.g. Torn seam on the left sleeve, noticed on opening the parcel.'
-                }
+                placeholder={descriptionPlaceholder}
               />
             </section>
           ) : null}
 
-          {/* Step 3: confirm */}
+          {/* Step 2 (return): reason */}
+          {step === 'return_reason' ? (
+            <section className="mt-10">
+              <h2 className="label-caps text-ink">Why are you returning this?</h2>
+              <div className="mt-5 grid gap-3">
+                {RETURN_KIND_OPTIONS.map((option) => (
+                  <OptionCard
+                    key={option.kind}
+                    title={option.title}
+                    description={option.description}
+                    onClick={() => chooseReturnKind(option.kind, option.reason)}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {/* Confirm */}
           {step === 'confirm' && type && reason ? (
             <section className="mt-10">
               <h2 className="label-caps text-ink">Confirm your request</h2>
               <dl className="mt-5 space-y-3 border border-sand bg-surface p-5 font-sans text-sm">
                 <div className="flex justify-between gap-4">
                   <dt className="text-ink-muted">Reason</dt>
-                  <dd className="text-right text-ink">{RETURN_REASON_LABELS[reason]}</dd>
+                  <dd className="text-right text-ink">{reasonLabel}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-ink-muted">Request</dt>
-                  <dd className="text-right text-ink">{RETURN_TYPE_LABELS[type]}</dd>
+                  <dd className="text-right text-ink">{requestLabel}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-ink-muted">Item</dt>
@@ -438,22 +561,19 @@ export default function NewReturnPage() {
                     <dt className="text-ink-muted">New size</dt>
                     <dd className="text-right text-ink">{requestedSize}</dd>
                   </div>
-                ) : null}
-                {type === 'damage_defect' ? (
+                ) : (
                   <div className="flex justify-between gap-4">
                     <dt className="text-ink-muted">Photos</dt>
                     <dd className="text-right text-ink">{photos.length}</dd>
                   </div>
-                ) : null}
+                )}
               </dl>
               <p className="mt-4 font-sans text-sm text-ink-muted">
-                {type === 'store_credit'
-                  ? `Once we receive and inspect the item, ${formatPrice(item.price)} store credit will be added to your account. Store credit never expires.`
-                  : type === 'damage_defect'
-                    ? 'Your photos are checked against your order when you submit. After pickup and inspection we send a replacement in the same size or add store credit to your account.'
-                    : 'We will arrange a pickup. Your new size ships once the original is received and inspected.'}
+                {type === 'size_exchange'
+                  ? 'We will arrange a pickup. Your new size ships once the original is received and inspected.'
+                  : 'We will arrange a pickup. Refund or store credit will be decided after we receive and inspect the item.'}
               </p>
-              {type !== 'damage_defect' ? (
+              {type === 'size_exchange' ? (
                 <Textarea
                   className="mt-6"
                   label="Anything else we should know?"
@@ -473,22 +593,28 @@ export default function NewReturnPage() {
             </p>
           ) : null}
 
-          {step !== 'reason' ? (
+          {step !== 'type_select' ? (
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              {step === 'details' ? (
-                <Button
-                  variant="secondary"
-                  size="md"
-                  onClick={continueFromDetails}
-                  disabled={processing || (type === 'size_exchange' && sizeOptions.length === 0)}
-                >
+              {step === 'exchange_size' && !sizesUnavailable ? (
+                <Button variant="secondary" size="md" onClick={continueFromSize} disabled={!productLoaded}>
                   Continue
                 </Button>
-              ) : (
+              ) : null}
+              {step === 'exchange_size' && sizesUnavailable ? (
+                <Button variant="secondary" size="md" onClick={chooseSizeNotAvailable}>
+                  Continue
+                </Button>
+              ) : null}
+              {step === 'photos' ? (
+                <Button variant="secondary" size="md" onClick={continueFromPhotos} disabled={processing}>
+                  Continue
+                </Button>
+              ) : null}
+              {step === 'confirm' ? (
                 <Button variant="primary" size="md" onClick={() => void submit()} loading={submitting}>
                   {submitting && type === 'damage_defect' ? 'Checking Photos' : 'Submit Request'}
                 </Button>
-              )}
+              ) : null}
               <Button variant="ghost" size="md" onClick={goBack} disabled={submitting}>
                 Back
               </Button>

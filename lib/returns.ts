@@ -131,10 +131,10 @@ export function validateCreateReturn(body: unknown): ValidationResult<CreateRetu
     request.requestedSize = requestedSize;
   }
 
-  if (type === 'damage_defect') {
+  if (type === 'damage_defect' || (type === 'store_credit' && Array.isArray(body.damagePhotoUrls) && body.damagePhotoUrls.length > 0)) {
     const raw = Array.isArray(body.damagePhotoUrls) ? body.damagePhotoUrls : [];
     const photos = raw.filter((value): value is string => typeof value === 'string' && value.length > 0);
-    if (photos.length === 0) return { ok: false, error: 'Please add at least one photo of the item.' };
+    if (type === 'damage_defect' && photos.length === 0) return { ok: false, error: 'Please add at least one photo of the item.' };
     if (photos.length > MAX_DAMAGE_PHOTOS) return { ok: false, error: `You can add up to ${MAX_DAMAGE_PHOTOS} photos.` };
     if (!photos.every((photo) => DATA_URL_PATTERN.test(photo))) {
       return { ok: false, error: 'One of the photos could not be read. Please try another.' };
@@ -143,7 +143,7 @@ export function validateCreateReturn(body: unknown): ValidationResult<CreateRetu
     if (totalChars > MAX_DAMAGE_PHOTOS_TOTAL_CHARS) {
       return { ok: false, error: 'Your photos are too large. Please add fewer photos.' };
     }
-    request.damagePhotoUrls = photos;
+    if (photos.length > 0) request.damagePhotoUrls = photos;
   }
 
   return { ok: true, data: request };
