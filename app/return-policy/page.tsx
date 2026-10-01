@@ -73,50 +73,59 @@ export default function ReturnPolicyPage() {
         </ol>
       </LegalSection>
 
-      <LegalSection title="Exchanges">
+      <LegalSection title="Size exchange">
         <ol>
           <li>
-            <strong>Check availability first.</strong> Message us on {whatsappLink} with your order number, the item you
-            want to exchange and the size you need. We will confirm whether that size is in stock before proceeding.
+            <strong>Request an exchange</strong> from your order in My Account within 7 days of delivery.
           </li>
           <li>
-            <strong>If your size is available</strong>, we arrange a free pickup of the original item. Once it reaches us
-            and passes inspection, we dispatch the replacement.
+            <strong>Select your new size.</strong> We show only the sizes currently in stock. If your size is available,
+            confirm the exchange.
           </li>
           <li>
-            <strong>If your size is not available</strong>, we issue store credit for the value of the returned item.
-            Store credit is issued after we receive and inspect the original item, and can be used on any future order.
+            <strong>If your size is not in stock</strong>, tap "My size is not available" and we will issue store credit
+            for the full item value once the returned item passes inspection.
+          </li>
+          <li>
+            We arrange a free pickup. Once the item is received and inspected, your exchange is dispatched or store
+            credit is added to your account — whichever you selected.
           </li>
         </ol>
+      </LegalSection>
+
+      <LegalSection title="Damaged, defective or wrong items">
         <p>
-          Full cash refunds are issued only in cases where the item arrived damaged, defective or was not what you
-          ordered — not for size exchanges or change of mind.
+          If your order arrives damaged, defective or incorrect, raise a request from My Account within 48 hours of
+          delivery and upload a clear photo of the issue. We will review it and, at our discretion, send a replacement
+          of the same size (subject to availability) or issue store credit. In exceptional circumstances a full refund
+          may be approved by our team.
         </p>
       </LegalSection>
 
       <LegalSection title="Store credit">
         <p>
-          Store credit is issued to your Vellee Luxe account after the returned item is received and inspected. It has
-          no expiry and can be applied to any order on velleeluxe.com.
+          Store credit is added to your Vellee Luxe account after the returned item is received and inspected. It never
+          expires and can be used on any future order on velleeluxe.com.
         </p>
       </LegalSection>
 
       <LegalSection title="Refund timeline">
-        <p>Full refunds (damaged, defective or wrong items only) are processed as follows:</p>
+        <p>
+          Full cash refunds are issued only in exceptional cases and only for damaged, defective or wrong items, at our
+          team's discretion. When approved:
+        </p>
         <ul>
           <li>
-            <strong>Online payments:</strong> refunded to your original payment method within 5–7 business days of the
-            return passing inspection. Your bank may take a few additional days to show it.
+            <strong>Online payments (Razorpay):</strong> refunded to your original payment method within 5–7 business
+            days of approval. Your bank may take a few additional days to reflect it.
           </li>
           <li>
-            <strong>Cash on Delivery orders:</strong> refunded by UPI or bank transfer (NEFT/IMPS) to an account you
-            share with us, within 5–7 business days of the return passing inspection.
+            <strong>Cash on Delivery orders:</strong> refunded by bank transfer (NEFT/IMPS). You will be asked to add
+            your bank details in My Account. Once our team processes the transfer, the transaction reference will be
+            visible in your account.
           </li>
         </ul>
-        <p>
-          Original shipping charges are non-refundable, except where the item was damaged, defective or not what you
-          ordered.
-        </p>
+        <p>Original shipping charges are non-refundable in all cases.</p>
       </LegalSection>
 
       <LegalSection title="Damaged, defective or wrong items">
