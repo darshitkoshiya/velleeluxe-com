@@ -4,7 +4,7 @@
  * Order of attempts:
  *   1. Firestore cache `pincodeCache/{pincode}` (7-day TTL)
  *   2. Shiprocket (needs SHIPROCKET_EMAIL + SHIPROCKET_PASSWORD)
- *   3. Ekart (needs EKART_API_KEY)
+ *   3. Ekart (needs EKART_TOKEN, or EKART_CLIENT_ID + EKART_USERNAME + EKART_PASSWORD)
  *   4. Nothing configured / every courier failed → { serviceable: true } so checkout is never blocked
  *      by a courier outage or missing credentials.
  */
@@ -24,7 +24,9 @@ const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SHIPROCKET_BASE = 'https://apiv2.shiprocket.in/v1/external';
 /** Shiprocket tokens last 10 days; refresh a day early to be safe. */
 const SHIPROCKET_TOKEN_TTL_MS = 9 * 24 * 60 * 60 * 1000;
-const EKART_URL = 'https://ekartlogistics.com/ws/getservicedetail';
+const EKART_DEFAULT_BASE_URL = 'https://app.elite.ekartlogistics.in';
+/** Ekart tokens last ~24h; cache for 20h to be safe. */
+const EKART_TOKEN_TTL_MS = 20 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8000;
 
 const NOT_SERVICEABLE_MESSAGE = 'Delivery not available to this pincode. Please try a different address.';
@@ -192,35 +194,170 @@ async function checkShiprocket(pincode: string): Promise<ServiceabilityResult> {
 // Ekart (fallback)
 // ---------------------------------------------------------------------------
 
-async function checkEkart(pincode: string): Promise<ServiceabilityResult> {
-  const { ok, status, json } = await fetchJson(EKART_URL, {
+function ekartBaseUrl(): string {
+  return (process.env.EKART_BASE_URL?.trim() || EKART_DEFAULT_BASE_URL).replace(/\/+$/, '');
+}
+
+function hasEkartCredentials(): boolean {
+  return Boolean(
+    process.env.EKART_TOKEN ||
+      (process.env.EKART_CLIENT_ID && process.env.EKART_USERNAME && process.env.EKART_PASSWORD),
+  );
+}
+
+/**
+ * Bearer token for the Ekart API.
+ *   1. EKART_TOKEN env var (pre-issued static token) — used as-is.
+ *   2. Cached token in Firestore `config/ekart` (if not expired).
+ *   3. Fresh token from POST /integrations/v2/auth/token/{EKART_CLIENT_ID}, cached for 20h.
+ * Returns null on failure so the caller can fall back gracefully.
+ */
+async function getEkartToken(forceRefresh = false): Promise<string | null> {
+  const staticToken = process.env.EKART_TOKEN?.trim();
+  if (staticToken) return staticToken;
+
+  const clientId = process.env.EKART_CLIENT_ID;
+  const username = process.env.EKART_USERNAME;
+  const password = process.env.EKART_PASSWORD;
+  if (!clientId || !username || !password) return null;
+
+  try {
+    const ref = getAdminDb().collection('config').doc('ekart');
+
+    if (!forceRefresh) {
+      try {
+        const snap = await ref.get();
+        const data = snap.data() as { token?: unknown; expiresAt?: unknown } | undefined;
+        if (typeof data?.token === 'string' && typeof data.expiresAt === 'number' && data.expiresAt > Date.now()) {
+          return data.token;
+        }
+      } catch (error) {
+        console.warn('[pincode] Could not read cached Ekart token:', error);
+      }
+    }
+
+    const { ok, status, json } = await fetchJson(
+      `${ekartBaseUrl()}/integrations/v2/auth/token/${encodeURIComponent(clientId)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ username, password }),
+      },
+    );
+    const body = asRecord(json);
+    const rawToken = body?.access_token ?? body?.accessToken ?? body?.token ?? asRecord(body?.data)?.access_token;
+    const token = typeof rawToken === 'string' ? rawToken.replace(/^Bearer\s+/i, '').trim() : '';
+    if (!ok || !token) {
+      console.warn(`[pincode] Ekart auth failed (HTTP ${status})`);
+      return null;
+    }
+
+    try {
+      await ref.set({ token, expiresAt: Date.now() + EKART_TOKEN_TTL_MS, updatedAt: Date.now() });
+    } catch (error) {
+      console.warn('[pincode] Could not store Ekart token:', error);
+    }
+    return token;
+  } catch (error) {
+    console.warn('[pincode] Ekart auth error:', error);
+    return null;
+  }
+}
+
+async function ekartServiceabilityRequest(pincode: string, token: string) {
+  const pickupPincode = await getPickupPincode();
+  return fetchJson(`${ekartBaseUrl()}/data/v3/serviceability`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Access-Token': process.env.EKART_API_KEY ?? '' },
-    body: JSON.stringify({ pincode }),
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      pickupPincode,
+      dropPincode: pincode,
+      weight: '500',
+      length: '30',
+      width: '25',
+      height: '5',
+      paymentType: 'Prepaid',
+      invoiceAmount: '999',
+    }),
   });
-  if (!ok) throw new Error(`Ekart serviceability failed (HTTP ${status})`);
+}
 
-  // The response shape varies between Ekart API versions, so read it defensively.
-  const root = asRecord(json);
-  const detail =
-    asRecord(root?.response) ?? asRecord(root?.data) ?? asRecord(root?.result) ?? root;
-  if (!detail) throw new Error('Ekart returned an unexpected response');
+/** Pulls the courier list out of the response (a bare array, or wrapped in data/couriers/etc.). */
+function extractEkartCouriers(json: unknown): Record<string, unknown>[] | null {
+  let list: unknown = json;
+  if (!Array.isArray(list)) {
+    const root = asRecord(json);
+    if (!root) return null;
+    const inner = asRecord(root.data);
+    list = [root.data, root.couriers, root.response, root.result, inner?.couriers].find(Array.isArray);
+    if (!Array.isArray(list)) return null;
+  }
+  return (list as unknown[]).map(asRecord).filter((c): c is Record<string, unknown> => !!c);
+}
 
-  const flag =
-    detail.serviceable ?? detail.isServiceable ?? detail.is_serviceable ?? detail.deliverable ?? detail.status;
-  if (flag === undefined) throw new Error('Ekart response had no serviceability flag');
+/** Builds an "x-y days" string from a courier's TAT fields. */
+function ekartTat(courier: Record<string, unknown>): string | undefined {
+  const tat = asRecord(courier.tat);
+  const min = tat?.min ?? courier.min_tat ?? courier.tat_min ?? courier.minTat;
+  const max = tat?.max ?? courier.max_tat ?? courier.tat_max ?? courier.maxTat;
+  if (min !== undefined && max !== undefined && min !== null && max !== null) {
+    return String(min) === String(max) ? formatDays(min) : formatDays(`${min}-${max}`);
+  }
+  if (min !== undefined && min !== null) return formatDays(min);
+  if (max !== undefined && max !== null) return formatDays(max);
+  const raw = tat ? undefined : courier.tat ?? courier.tat_range ?? courier.estimated_delivery_days;
+  return formatDays(raw);
+}
 
-  const serviceable =
-    typeof flag === 'string' ? ['serviceable', 'success', 'true', 'yes', '1'].includes(flag.toLowerCase()) : truthy(flag);
-  if (!serviceable) return { serviceable: false, error: NOT_SERVICEABLE_MESSAGE };
+/**
+ * Ekart serviceability via POST /data/v3/serviceability. Never throws: any failure
+ * (no token, timeout, bad response) returns PASSTHROUGH so checkout is never blocked.
+ */
+async function checkEkartServiceability(pincode: string): Promise<ServiceabilityResult> {
+  try {
+    let token = await getEkartToken();
+    if (!token) return PASSTHROUGH;
 
-  const codFlag = detail.cod ?? detail.cod_available ?? detail.codAvailable ?? detail.isCodServiceable;
-  return {
-    serviceable: true,
-    courier: 'Ekart',
-    estimatedDays: formatDays(detail.tat ?? detail.estimated_delivery_days ?? detail.estimatedDays),
-    cod: codFlag === undefined ? undefined : truthy(codFlag),
-  };
+    let response = await ekartServiceabilityRequest(pincode, token);
+    // Cached token may have been revoked early — refresh once (not possible with a static token).
+    if ((response.status === 401 || response.status === 403) && !process.env.EKART_TOKEN?.trim()) {
+      token = await getEkartToken(true);
+      if (!token) return PASSTHROUGH;
+      response = await ekartServiceabilityRequest(pincode, token);
+    }
+
+    const couriers = extractEkartCouriers(response.json);
+    if (!response.ok) {
+      // Some APIs answer "no courier" with a 4xx and an empty list; anything else is a real failure.
+      if (couriers && couriers.length === 0 && response.status !== 401 && response.status !== 403) {
+        return { serviceable: false, error: NOT_SERVICEABLE_MESSAGE };
+      }
+      console.warn(`[pincode] Ekart serviceability failed (HTTP ${response.status})`);
+      return PASSTHROUGH;
+    }
+    if (!couriers) {
+      console.warn('[pincode] Ekart returned an unexpected response');
+      return PASSTHROUGH;
+    }
+    if (couriers.length === 0) return { serviceable: false, error: NOT_SERVICEABLE_MESSAGE };
+
+    const best = couriers[0];
+    const name = best.courier_name ?? best.courierName ?? best.name;
+    const hasCodField = couriers.some(
+      (c) => c.cod !== undefined || c.cod_available !== undefined || c.is_cod !== undefined || c.codAvailable !== undefined,
+    );
+    return {
+      serviceable: true,
+      courier: typeof name === 'string' && name ? name : 'Ekart',
+      estimatedDays: couriers.map(ekartTat).find((d) => !!d),
+      cod: hasCodField
+        ? couriers.some((c) => truthy(c.cod) || truthy(c.cod_available) || truthy(c.is_cod) || truthy(c.codAvailable))
+        : undefined,
+    };
+  } catch (error) {
+    console.warn('[pincode] Ekart check failed:', error);
+    return PASSTHROUGH;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +370,7 @@ export async function checkPincodeServiceability(pincode: string): Promise<Servi
   }
 
   const hasShiprocket = Boolean(process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD);
-  const hasEkart = Boolean(process.env.EKART_API_KEY);
+  const hasEkart = hasEkartCredentials();
   if (!hasShiprocket && !hasEkart) return PASSTHROUGH;
 
   const cached = await readCache(pincode);
@@ -250,12 +387,11 @@ export async function checkPincodeServiceability(pincode: string): Promise<Servi
   }
 
   if (hasEkart) {
-    try {
-      const result = await checkEkart(pincode);
+    const result = await checkEkartServiceability(pincode);
+    // PASSTHROUGH means Ekart failed — don't cache it.
+    if (result !== PASSTHROUGH) {
       await writeCache(pincode, result, 'ekart');
       return result;
-    } catch (error) {
-      console.warn('[pincode] Ekart check failed:', error);
     }
   }
 
