@@ -94,6 +94,9 @@ export default async function AdminDashboardPage() {
         <a href="/admin/orders" style={linkButton}>
           View all orders
         </a>
+        <a href="/admin/returns" style={{ ...linkButton, background: '#fff', color: '#1C2230', border: '1px solid #1C2230' }}>
+          Returns &amp; exchanges
+        </a>
         <a href="/admin/settings" style={{ ...linkButton, background: '#fff', color: '#1C2230', border: '1px solid #1C2230' }}>
           Settings
         </a>

@@ -23,7 +23,7 @@ const getFaqs = (freeShippingThreshold: number) => [
   {
     question: 'What is your return policy?',
     answer:
-      'You can return or exchange a shirt within 7 days of delivery, as long as it is unworn, unwashed and has its tags intact. Message us on WhatsApp and we will arrange a pickup. Refunds reach your original payment method within 5–7 business days.',
+      'You can exchange a product within 7 days of delivery, as long as it is unworn, unwashed and has its tags intact. Message us on WhatsApp or raise a request from My Account and we will arrange a pickup. Resolutions are issued as store credit or an exchange — see our Return Policy for full details.',
   },
   {
     question: 'How do I find the right size?',

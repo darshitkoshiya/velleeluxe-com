@@ -21,9 +21,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }}
       >
         <span style={{ fontWeight: 600, letterSpacing: '0.1em', fontSize: '14px' }}>VELLEE LUXE — ADMIN</span>
-        <nav style={{ display: 'flex', gap: '24px', fontSize: '13px' }}>
+        <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 24px', fontSize: '13px' }}>
           <a href="/admin" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Dashboard</a>
           <a href="/admin/orders" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Orders</a>
+          <a href="/admin/returns" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Returns</a>
+          <a href="/admin/store-credit" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Store Credit</a>
           <a href="/admin/settings" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Settings</a>
         </nav>
       </div>

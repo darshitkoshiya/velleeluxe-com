@@ -6,12 +6,13 @@ import { sendPasswordResetEmail, updateProfile, type User } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getAuthErrorMessage } from '@/context/AuthContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useStoreCredit } from '@/hooks/useStoreCredit';
 import { Button } from '@/components/ui/Button';
 import { ArrowRightIcon } from '@/components/ui/Icons';
 import { Input } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/LoadingSpinner';
 import { getClientAuth, getClientDb } from '@/lib/firebase';
-import { cn, isValidEmail, normaliseIndianPhone } from '@/lib/utils';
+import { cn, formatDate, formatPrice, isValidEmail, normaliseIndianPhone } from '@/lib/utils';
 
 type Tab = 'login' | 'signup';
 
@@ -320,7 +321,8 @@ function ProfileView({ user }: { user: User }) {
 
         <nav aria-label="Account" className="mt-2 divide-y divide-sand border-b border-sand">
           <AccountLink href="/account/orders" title="My Orders" description="Track and review your orders" />
-          <AccountLink href="/wishlist" title="My Wishlist" description="Shirts you have saved for later" />
+          <AccountLink href="/account/returns" title="My Returns & Exchanges" description="Follow your exchange and issue requests" />
+          <AccountLink href="/wishlist" title="My Wishlist" description="Products you have saved for later" />
         </nav>
 
         <section className="mt-10">
@@ -366,6 +368,8 @@ function ProfileView({ user }: { user: User }) {
             </dl>
           )}
         </section>
+
+        <StoreCreditSection />
 
         <div className="mt-12">
           <Button
@@ -475,5 +479,60 @@ function EditProfileForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Store credit                                                        */
+/* ------------------------------------------------------------------ */
+
+function StoreCreditSection() {
+  const { balance, transactions, loading, error } = useStoreCredit();
+
+  return (
+    <section className="mt-10">
+      <div className="flex items-center justify-between">
+        <h2 className="label-caps text-ink">Store Credit</h2>
+        <Link
+          href="/account/store-credit"
+          className="font-sans text-xs uppercase tracking-[0.14em] text-ink underline underline-offset-4 hover:text-accent"
+        >
+          View Statement
+        </Link>
+      </div>
+      <div className="mt-5 border border-sand bg-surface p-5 font-sans text-sm">
+        {loading ? (
+          <p className="text-ink-muted">Loading...</p>
+        ) : error ? (
+          <p role="alert" className="text-accent">
+            {error}
+          </p>
+        ) : (
+          <>
+            <p className="text-2xl font-medium text-ink">{formatPrice(balance)} available</p>
+            <p className="mt-1 font-serif italic text-ink-muted">Never expires. Use it on your next order.</p>
+            {transactions.length > 0 ? (
+              <ul className="mt-5 divide-y divide-sand border-t border-sand">
+                {transactions.slice(0, 5).map((entry, index) => (
+                  <li key={entry.id || `${entry.createdAt}-${index}`} className="flex items-start justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-ink">{entry.reason}</p>
+                      <p className="mt-0.5 text-xs text-ink-muted">
+                        <time dateTime={entry.createdAt}>{formatDate(entry.createdAt)}</time>
+                        {entry.orderId ? ` / Order ${entry.orderId}` : ''}
+                      </p>
+                    </div>
+                    <p className={cn('shrink-0 font-medium', entry.type === 'debit' ? 'text-red-700' : 'text-green-700')}>
+                      {entry.type === 'debit' ? '-' : '+'}
+                      {formatPrice(Math.abs(entry.amount))}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
+        )}
+      </div>
+    </section>
   );
 }

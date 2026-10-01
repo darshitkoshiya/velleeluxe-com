@@ -32,7 +32,7 @@ export default async function ShippingPolicyPage() {
           Ladakh, and the Andaman &amp; Nicobar and Lakshadweep islands, may take a few days longer.
         </p>
         <p>
-          Each shirt is prepared and quality-checked for your order before dispatch, which is included in the delivery
+          Each item is prepared and quality-checked for your order before dispatch, which is included in the delivery
           time above.
         </p>
       </LegalSection>

@@ -12,9 +12,22 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Each customer can read and write only their own profile and wishlist.
+    // Each customer can read all of their own data...
     match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ...and write their own profile (name, phone, bank details) and other personal data,
+    // EXCEPT store credit, which only the server (admin resolving a return) may change.
+    match /users/{userId}/{collectionId}/{docId} {
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && collectionId != 'storeCredit';
+    }
+
+    // Return requests are created and updated only by the server (API routes).
+    match /returns/{returnId} {
+      allow read, write: if false;
     }
 
     // Everything else is closed.

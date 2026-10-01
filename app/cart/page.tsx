@@ -18,9 +18,9 @@ export default function CartPage() {
     return (
       <div className="container-page flex min-h-[60vh] flex-col items-center justify-center py-20 text-center">
         <h1 className="font-serif text-3xl italic text-ink">Your cart is empty</h1>
-        <p className="mt-3 font-serif text-lg text-slateGrey">Find a shirt you&rsquo;ll reach for every week.</p>
+        <p className="mt-3 font-serif text-lg text-slateGrey">Find something you&rsquo;ll reach for every week.</p>
         <Link href="/shop" className={buttonClasses({ variant: 'primary', size: 'lg', width: 'auto', className: 'mt-10' })}>
-          Shop Shirts
+          Shop Now
         </Link>
       </div>
     );

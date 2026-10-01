@@ -28,7 +28,7 @@ const steps = [
   },
   {
     title: 'Length',
-    body: 'Measure from the highest point of the shoulder, next to the collar, straight down to where you want the shirt to end. Or measure a shirt you already love, collar seam to hem.',
+    body: 'Measure from the highest point of the shoulder, next to the collar, straight down to where you want the garment to end. Or measure a similar garment you already love, collar seam to hem.',
   },
 ];
 
@@ -65,11 +65,11 @@ export default function SizeGuidePage() {
         {/* Size chart */}
         <section aria-labelledby="chart-title" className="mt-14 border-t border-sand/30 pt-14">
           <h2 id="chart-title" className="font-serif text-2xl italic text-ink md:text-3xl">
-            Shirt Size Chart
+            Size Chart
           </h2>
           <div className="-mx-4 mt-8 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             <table className="w-full min-w-[520px] border-collapse bg-surface font-sans text-sm">
-              <caption className="sr-only">Vellee Luxe shirt measurements by size</caption>
+              <caption className="sr-only">Vellee Luxe size measurements by size</caption>
               <thead>
                 <tr className="border-b border-ink">
                   <th scope="col" className="px-4 py-4 text-left text-[11px] font-medium uppercase tracking-[0.14em] text-ink">

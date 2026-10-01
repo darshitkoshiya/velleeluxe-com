@@ -12,6 +12,7 @@ import { buttonClasses } from '@/components/ui/Button';
 import { CheckIcon } from '@/components/ui/Icons';
 import { PageLoader } from '@/components/ui/LoadingSpinner';
 import { getClientDb } from '@/lib/firebase';
+import { isWithinReturnWindow, RETURN_WINDOW_DAYS } from '@/lib/returns-shared';
 import type { Order, OrderStatus } from '@/lib/types';
 import { cn, formatDate, formatPrice } from '@/lib/utils';
 
@@ -102,6 +103,7 @@ export default function OrderDetailPage() {
   const currentStep = STEP_INDEX[order.status] ?? 0;
   const address = order.shippingAddress;
   const count = itemCount(order.items);
+  const canRequestReturn = isWithinReturnWindow(order);
 
   return (
     <div className="bg-linen">
@@ -179,7 +181,7 @@ export default function OrderDetailPage() {
               Items <span className="text-ink-muted">({count})</span>
             </h2>
             <ul className="mt-4 divide-y divide-sand border-y border-sand">
-              {order.items.map((item) => {
+              {order.items.map((item, index) => {
                 const thumb = (
                   <div className="relative h-24 w-[72px] shrink-0 overflow-hidden bg-sand">
                     {item.image ? <Image src={item.image} alt={item.productName} fill sizes="72px" className="object-cover" /> : null}
@@ -196,11 +198,29 @@ export default function OrderDetailPage() {
                         </p>
                       </div>
                       <p className="mt-2 font-sans text-sm font-medium text-ink sm:mt-0">{formatPrice(item.price * item.quantity)}</p>
+                      {canRequestReturn ? (
+                        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 sm:hidden">
+                          <ReturnLinks orderId={order.orderId} index={index} />
+                        </div>
+                      ) : null}
                     </div>
+                    {canRequestReturn ? (
+                      <div className="hidden shrink-0 flex-col items-end gap-2 sm:flex">
+                        <ReturnLinks orderId={order.orderId} index={index} />
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}
             </ul>
+            {canRequestReturn ? (
+              <p className="mt-3 font-sans text-xs text-ink-muted">
+                Returns and exchanges are open for {RETURN_WINDOW_DAYS} days after delivery.{' '}
+                <Link href="/account/returns" className="underline underline-offset-4 hover:text-accent">
+                  View my requests
+                </Link>
+              </p>
+            ) : null}
           </section>
 
           <div className="mt-12 grid gap-10 md:grid-cols-2">
@@ -278,5 +298,17 @@ export default function OrderDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function ReturnLinks({ orderId, index }: { orderId: string; index: number }) {
+  // Every request starts with "Why are you returning this?" on the next page.
+  return (
+    <Link
+      href={`/account/returns/new/${encodeURIComponent(orderId)}/${index}`}
+      className="font-sans text-[11px] font-medium uppercase tracking-[0.14em] text-ink underline underline-offset-4 hover:text-accent"
+    >
+      Return or Exchange
+    </Link>
   );
 }

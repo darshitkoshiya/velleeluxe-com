@@ -21,7 +21,7 @@ export default async function ShopPage() {
     <div className="container-page py-12 md:py-16">
       <header className="mb-10 md:mb-12">
         <p className="label-caps text-oxford">The Collection</p>
-        <h1 className="mt-3 font-sans text-3xl font-medium text-ink md:text-4xl">Shirts</h1>
+        <h1 className="mt-3 font-sans text-3xl font-medium text-ink md:text-4xl">The Collection</h1>
         <p className="mt-3 max-w-xl font-serif text-lg text-slateGrey">
           Considered cloth, clean construction, and fits for every build.
         </p>

@@ -25,9 +25,9 @@ export default function CheckoutPage() {
     return (
       <div className="container-page flex min-h-[60vh] flex-col items-center justify-center py-20 text-center">
         <h1 className="font-serif text-3xl italic text-ink">Your cart is empty</h1>
-        <p className="mt-3 font-serif text-lg text-slateGrey">Add a shirt or two before checking out.</p>
+        <p className="mt-3 font-serif text-lg text-slateGrey">Add something to your bag before checking out.</p>
         <Link href="/shop" className={buttonClasses({ variant: 'primary', size: 'lg', width: 'auto', className: 'mt-10' })}>
-          Shop Shirts
+          Shop Now
         </Link>
       </div>
     );

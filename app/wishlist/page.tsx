@@ -19,7 +19,7 @@ export default function WishlistPage() {
             <h1 className="mt-3 font-sans text-3xl font-medium text-ink">Wishlist</h1>
             {!loading && items.length > 0 ? (
               <p className="mt-2 font-sans text-sm text-ink-muted">
-                {items.length} {items.length === 1 ? 'shirt' : 'shirts'} saved on this device
+                {items.length} {items.length === 1 ? 'item' : 'items'} saved on this device
               </p>
             ) : null}
           </div>
@@ -43,7 +43,7 @@ export default function WishlistPage() {
                 <HeartIcon width={28} height={28} />
               </span>
               <p className="mt-6 font-serif text-2xl italic text-ink">Your wishlist is empty</p>
-              <p className="mt-2 font-sans text-sm text-ink-muted">Tap the heart on any shirt to save it here.</p>
+              <p className="mt-2 font-sans text-sm text-ink-muted">Tap the heart on any product to save it here.</p>
               <Link href="/shop" className={buttonClasses({ variant: 'primary', size: 'lg', width: 'auto', className: 'mt-8' })}>
                 Start Shopping
               </Link>
