@@ -84,16 +84,26 @@ export function typeForReason(reason: ReturnReason): ReturnType {
  * Day the return window ends. Orders have no separate "deliveredAt" field,
  * so `updatedAt` of a delivered order is used (it is set when the status changes).
  */
-export function returnWindowEnds(order: Pick<Order, 'status' | 'updatedAt'>): Date | null {
+export function returnWindowEnds(
+  order: Pick<Order, 'status' | 'updatedAt'>,
+  windowDays: number = RETURN_WINDOW_DAYS,
+): Date | null {
   if (order.status !== 'delivered') return null;
   const delivered = Date.parse(order.updatedAt);
   if (Number.isNaN(delivered)) return null;
-  return new Date(delivered + RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  return new Date(delivered + windowDays * 24 * 60 * 60 * 1000);
 }
 
-/** True while a delivered order is still inside the return window. */
-export function isWithinReturnWindow(order: Pick<Order, 'status' | 'updatedAt'>, now: Date = new Date()): boolean {
-  const ends = returnWindowEnds(order);
+/**
+ * True while a delivered order is still inside the return window.
+ * `windowDays` defaults to RETURN_WINDOW_DAYS when not given.
+ */
+export function isWithinReturnWindow(
+  order: Pick<Order, 'status' | 'updatedAt'>,
+  windowDays: number = RETURN_WINDOW_DAYS,
+  now: Date = new Date(),
+): boolean {
+  const ends = returnWindowEnds(order, windowDays);
   return ends !== null && now.getTime() <= ends.getTime();
 }
 

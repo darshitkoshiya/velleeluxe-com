@@ -15,12 +15,14 @@ export async function GET() {
     return NextResponse.json({
       codEnabled: settings.codEnabled,
       freeShippingThreshold: settings.freeShippingThreshold,
+      returnWindowByCategory: settings.returnWindowByCategory,
     });
   } catch (error) {
     console.error('[api/settings] Failed to read settings:', error);
     return NextResponse.json({
       codEnabled: DEFAULT_SETTINGS.codEnabled,
       freeShippingThreshold: DEFAULT_SETTINGS.freeShippingThreshold,
+      returnWindowByCategory: DEFAULT_SETTINGS.returnWindowByCategory,
     });
   }
 }
