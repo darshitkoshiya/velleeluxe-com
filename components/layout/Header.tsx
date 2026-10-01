@@ -80,7 +80,7 @@ function NavDropdown({ group, pathname }: { group: NavGroup; pathname: string })
     >
       <button
         type="button"
-        className={cn(navLink, 'inline-flex items-center gap-1.5 py-5', open ? 'text-ink' : 'text-ink-muted')}
+        className={cn(navLink, 'inline-flex h-full items-center gap-1.5', open ? 'text-ink' : 'text-ink-muted')}
         aria-expanded={open}
         aria-controls={menuId}
         onClick={() => setOpen((value) => !value)}
@@ -142,17 +142,17 @@ export default function Header({ fabricLinks = NO_LINKS, patternLinks = NO_LINKS
             </Link>
           </div>
 
-          <nav aria-label="Main">
-            <ul className="flex items-center gap-5 whitespace-nowrap xl:gap-9">
+          <nav aria-label="Main" className="h-full">
+            <ul className="flex h-full items-center gap-5 whitespace-nowrap xl:gap-8">
               {navEntries.map((entry) => (
-                <li key={entry.label}>
+                <li key={entry.label} className="h-full flex items-center">
                   {isNavGroup(entry) ? (
                     <NavDropdown group={entry} pathname={pathname} />
                   ) : (
                     <Link
                       href={entry.href}
                       aria-current={isActivePath(pathname, entry.href) ? 'page' : undefined}
-                      className={cn(navLink, 'py-5', isActivePath(pathname, entry.href) ? 'text-ink' : 'text-ink-muted')}
+                      className={cn(navLink, 'inline-flex h-full items-center', isActivePath(pathname, entry.href) ? 'text-ink' : 'text-ink-muted')}
                     >
                       {entry.label}
                     </Link>
