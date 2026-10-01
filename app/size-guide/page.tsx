@@ -4,7 +4,7 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Size Guide',
   description:
-    "Vellee Luxe men's shirt size chart — chest, shoulder and length for S to XXL, how to measure yourself, and our slim and regular fits.",
+    "Vellee Luxe men's size chart — chest, shoulder and length for S to XXL, how to measure yourself, and our slim and regular fits.",
   alternates: { canonical: '/size-guide' },
 };
 
@@ -57,7 +57,7 @@ export default function SizeGuidePage() {
           <p className="label-caps text-oxford">Size Guide</p>
           <h1 className="mt-4 font-serif text-4xl italic text-ink md:text-5xl">Find Your Perfect Fit</h1>
           <p className="mt-5 font-sans text-base leading-relaxed text-ink-muted md:text-lg">
-            Use a soft measuring tape and measure over a thin T-shirt, standing naturally. Compare your numbers with the
+            Use a soft measuring tape and measure over a thin layer, standing naturally. Compare your numbers with the
             chart below.
           </p>
         </header>
