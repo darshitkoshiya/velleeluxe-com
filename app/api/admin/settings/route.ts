@@ -8,6 +8,9 @@
  *                                   pickupPincode?: string, tpin?: string }
  *                            (at least one field; only the fields sent are changed)
  *                            pickupPincode needs the admin TPIN (wrong -> 401 "Incorrect TPIN").
+ *                            Or body { ekartConfig: { clientId?, username?, password?, staticToken?, baseUrl? }, tpin }
+ *                            — saved alone to Firestore config/ekart.credentials, returns { success: true }.
+ *                   GET also returns ekartStatus { configured, source, hasClientId, hasToken } (no secret values).
  *
  * Protected by HTTP Basic Auth in middleware.ts.
  */
@@ -32,9 +35,74 @@ import {
   type BrandPromiseItem,
   type StoreSettings,
 } from '@/lib/settings';
+import { FieldValue } from 'firebase-admin/firestore';
+import { getAdminDb } from '@/lib/firebase-admin';
+import { getEkartConfigStatus } from '@/lib/pincode';
 import { assertAdminTpin, StoreCreditError } from '@/lib/store-credit';
 
 export const dynamic = 'force-dynamic';
+
+const EKART_FIELDS = ['clientId', 'username', 'password', 'staticToken', 'baseUrl'] as const;
+const MAX_EKART_FIELD_LENGTH = 4096;
+
+/**
+ * Saves Ekart API credentials to Firestore `config/ekart.credentials` (merge, so the cached
+ * auth token fields and any credential not sent are kept). Blank fields are ignored.
+ */
+async function saveEkartConfig(rawConfig: unknown, tpin: unknown): Promise<NextResponse> {
+  try {
+    assertAdminTpin(tpin);
+  } catch (error) {
+    if (error instanceof StoreCreditError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: 'Could not verify TPIN.' }, { status: 500 });
+  }
+
+  if (!rawConfig || typeof rawConfig !== 'object' || Array.isArray(rawConfig)) {
+    return NextResponse.json({ error: 'ekartConfig must be an object.' }, { status: 400 });
+  }
+  const config = rawConfig as Record<string, unknown>;
+
+  const credentials: Record<string, string> = {};
+  for (const field of EKART_FIELDS) {
+    const value = config[field];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== 'string') {
+      return NextResponse.json({ error: `${field} must be text.` }, { status: 400 });
+    }
+    const trimmed = value.trim();
+    if (field === 'clientId' && trimmed === '') {
+      return NextResponse.json({ error: 'Client ID cannot be empty.' }, { status: 400 });
+    }
+    if (!trimmed) continue;
+    if (trimmed.length > MAX_EKART_FIELD_LENGTH) {
+      return NextResponse.json({ error: `${field} is too long.` }, { status: 400 });
+    }
+    if (field === 'baseUrl' && !/^https?:\/\/\S+$/i.test(trimmed)) {
+      return NextResponse.json({ error: 'Base URL must start with https://' }, { status: 400 });
+    }
+    credentials[field] = field === 'baseUrl' ? trimmed.replace(/\/+$/, '') : trimmed;
+  }
+
+  if (Object.keys(credentials).length === 0) {
+    return NextResponse.json({ error: 'Nothing to save.' }, { status: 400 });
+  }
+
+  try {
+    const update: Record<string, unknown> = { credentials, credentialsUpdatedAt: Date.now() };
+    // New login details or base URL make the cached auth token stale — drop it so the next check logs in again.
+    if (credentials.clientId || credentials.username || credentials.password || credentials.baseUrl) {
+      update.token = FieldValue.delete();
+      update.expiresAt = FieldValue.delete();
+    }
+    await getAdminDb().collection('config').doc('ekart').set(update, { merge: true });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('[api/admin/settings] Failed to save Ekart config:', error);
+    return NextResponse.json({ error: 'Could not save Ekart config.' }, { status: 500 });
+  }
+}
 
 function toResponse(settings: StoreSettings) {
   return {
@@ -51,8 +119,9 @@ function toResponse(settings: StoreSettings) {
 
 export async function GET() {
   try {
-    const settings = await getStoreSettings();
-    return NextResponse.json(toResponse(settings));
+    const [settings, ekartStatus] = await Promise.all([getStoreSettings(), getEkartConfigStatus()]);
+    // ekartStatus only says whether credentials exist — never their values.
+    return NextResponse.json({ ...toResponse(settings), ekartStatus });
   } catch (error) {
     console.error('[api/admin/settings] Failed to read settings:', error);
     return NextResponse.json({ error: 'Could not load settings.' }, { status: 500 });
@@ -76,8 +145,15 @@ export async function POST(request: NextRequest) {
     stockNotFoundBehaviour?: unknown;
     brandPromise?: unknown;
     pickupPincode?: unknown;
+    ekartConfig?: unknown;
     tpin?: unknown;
   };
+
+  // Ekart credentials are saved on their own (separate Firestore doc) and need the admin TPIN.
+  if (input.ekartConfig !== undefined) {
+    return saveEkartConfig(input.ekartConfig, input.tpin);
+  }
+
   const updates: Partial<StoreSettings> = {};
 
   if (input.pickupPincode !== undefined) {

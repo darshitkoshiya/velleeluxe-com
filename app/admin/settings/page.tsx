@@ -785,6 +785,8 @@ export default function AdminSettingsPage() {
 
             <PickupPincodeSection />
 
+            <EkartSection />
+
             <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e5e5e5' }}>
               <h2 style={{ fontSize: '13px', fontWeight: 600, margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6F6A62' }}>
                 Stock Defaults
@@ -1309,6 +1311,285 @@ function PickupPincodeSection() {
               }}
             >
               {saving ? 'Saving…' : 'Save Pincode'}
+            </button>
+            <button type="button" onClick={closeForm} disabled={saving} style={secondaryButtonStyle}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {message ? (
+        <p role="status" style={{ margin: '12px 0 0', fontSize: '14px', color: '#1E6B45' }}>
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" style={{ margin: '12px 0 0', fontSize: '14px', color: '#9A3B1E' }}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+type EkartStatus = {
+  configured: boolean;
+  source: 'env' | 'firestore' | 'none';
+  hasClientId: boolean;
+  hasToken: boolean;
+};
+type EkartStatusResponse = { ekartStatus?: EkartStatus; error?: string };
+type EkartFields = { clientId: string; username: string; password: string; staticToken: string; baseUrl: string };
+const EMPTY_EKART_FIELDS: EkartFields = { clientId: '', username: '', password: '', staticToken: '', baseUrl: '' };
+
+const EKART_SOURCE_LABELS: Record<EkartStatus['source'], string> = {
+  env: 'server environment variables',
+  firestore: 'saved admin settings',
+  none: 'not set',
+};
+
+/** Reads only the Ekart status flags from the settings API (never credential values). */
+async function loadEkartStatus(): Promise<EkartStatus> {
+  const response = await fetch('/api/admin/settings', { cache: 'no-store' });
+  const data = (await response.json().catch(() => ({}))) as EkartStatusResponse;
+  if (!response.ok || !data.ekartStatus || typeof data.ekartStatus.configured !== 'boolean') {
+    throw new Error(data.error || 'Could not load Ekart status.');
+  }
+  return data.ekartStatus;
+}
+
+/**
+ * Ekart courier API credentials. Saved on their own (not by the main Save button) and need the
+ * admin TPIN, which is checked on the server. Saved values are never sent back to the browser.
+ */
+function EkartSection() {
+  const [status, setStatus] = useState<EkartStatus | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [tpin, setTpin] = useState('');
+  const [fields, setFields] = useState<EkartFields>(EMPTY_EKART_FIELDS);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await loadEkartStatus();
+        if (!cancelled) setStatus(result);
+      } catch (err) {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load Ekart status.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const closeForm = () => {
+    setEditing(false);
+    setTpin('');
+    setFields(EMPTY_EKART_FIELDS);
+    setError(null);
+  };
+
+  const trimmed: EkartFields = {
+    clientId: fields.clientId.trim(),
+    username: fields.username.trim(),
+    password: fields.password.trim(),
+    staticToken: fields.staticToken.trim(),
+    baseUrl: fields.baseUrl.trim(),
+  };
+  const baseUrlInvalid = trimmed.baseUrl !== '' && !/^https?:\/\/\S+$/i.test(trimmed.baseUrl);
+  const anyField = Object.values(trimmed).some((value) => value !== '');
+  const saveDisabled = saving || !tpin.trim() || !anyField || baseUrlInvalid;
+
+  const saveConfig = async () => {
+    if (!tpin.trim()) {
+      setError('Enter your TPIN.');
+      return;
+    }
+    if (baseUrlInvalid) {
+      setError('Base URL must start with https://');
+      return;
+    }
+    if (!anyField) {
+      setError('Fill in at least one field to save.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      // Only send filled-in fields, so blank ones keep their saved value.
+      const ekartConfig: Partial<EkartFields> = {};
+      for (const [key, value] of Object.entries(trimmed) as [keyof EkartFields, string][]) {
+        if (value) ekartConfig[key] = value;
+      }
+      const response = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tpin: tpin.trim(), ekartConfig }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!response.ok || data.success !== true) {
+        throw new Error(data.error || 'Could not save Ekart config.');
+      }
+      closeForm();
+      try {
+        setStatus(await loadEkartStatus());
+      } catch {
+        // Saved fine; the status box just won't refresh until the page is reloaded.
+      }
+      setMessage('Ekart config saved. Delivery checks will use it right away.');
+    } catch (err) {
+      setTpin('');
+      setError(err instanceof Error ? err.message : 'Could not save Ekart config.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fieldStyle: CSSProperties = {
+    padding: '10px 12px',
+    fontSize: '15px',
+    border: '1px solid #ccc',
+    borderRadius: '6px',
+    background: '#fff',
+    width: '100%',
+    boxSizing: 'border-box',
+  };
+  const labelStyle: CSSProperties = { display: 'block', fontSize: '14px', fontWeight: 600, margin: '0 0 6px' };
+  const secondaryButtonStyle: CSSProperties = {
+    background: 'transparent',
+    color: '#1C2230',
+    border: '1px solid #ccc',
+    borderRadius: '6px',
+    padding: '9px 14px',
+    fontSize: '13px',
+    fontWeight: 500,
+    cursor: saving ? 'not-allowed' : 'pointer',
+    opacity: saving ? 0.5 : 1,
+  };
+
+  const textFields: { key: keyof EkartFields; id: string; label: string; type: 'text' | 'password' | 'url'; placeholder: string }[] = [
+    { key: 'clientId', id: 'ekart-client-id', label: 'Client ID', type: 'text', placeholder: 'Leave blank to keep current' },
+    { key: 'username', id: 'ekart-username', label: 'Username', type: 'text', placeholder: 'Leave blank to keep current' },
+    { key: 'password', id: 'ekart-password', label: 'Password', type: 'password', placeholder: 'Leave blank to keep current' },
+    { key: 'staticToken', id: 'ekart-static-token', label: 'Static Token (optional)', type: 'password', placeholder: 'Leave blank to keep current' },
+    { key: 'baseUrl', id: 'ekart-base-url', label: 'Base URL (optional)', type: 'url', placeholder: 'https://app.elite.ekartlogistics.in' },
+  ];
+
+  return (
+    <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e5e5e5' }}>
+      <h2 style={{ fontSize: '13px', fontWeight: 600, margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6F6A62' }}>
+        Ekart API
+      </h2>
+      <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 6px' }}>Ekart Courier Credentials</h3>
+      <p style={{ fontSize: '14px', color: '#6F6A62', margin: '0 0 14px', lineHeight: 1.5 }}>
+        Used to check whether Ekart can deliver to a customer&apos;s pincode. Requires your admin transaction PIN.
+      </p>
+
+      {loadError ? (
+        <p role="alert" style={{ fontSize: '14px', margin: '0 0 12px', color: '#9A3B1E' }}>
+          {loadError}
+        </p>
+      ) : status === null ? (
+        <p style={{ fontSize: '14px', margin: '0 0 12px', color: '#6F6A62' }}>Loading…</p>
+      ) : (
+        <div style={{ padding: '12px 14px', border: '1px solid #e5e5e5', borderRadius: '6px', fontSize: '14px', margin: '0 0 12px', lineHeight: 1.6 }}>
+          <div style={{ fontWeight: 600, color: status.configured ? '#1E6B45' : '#9A3B1E' }}>
+            {status.configured ? 'Configured ✓' : 'Not configured'}
+          </div>
+          {status.configured ? (
+            <div style={{ color: '#6F6A62' }}>Using: {EKART_SOURCE_LABELS[status.source]}</div>
+          ) : null}
+          <div style={{ color: '#6F6A62' }}>
+            Client ID: {status.hasClientId ? 'set' : 'not set'} · Static token: {status.hasToken ? 'set' : 'not set'}
+          </div>
+        </div>
+      )}
+
+      {!editing ? (
+        <button
+          type="button"
+          onClick={() => {
+            setEditing(true);
+            setMessage(null);
+            setError(null);
+          }}
+          style={secondaryButtonStyle}
+        >
+          {status?.configured ? 'Change Ekart Config' : 'Set Up Ekart'}
+        </button>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px', border: '1px solid #e5e5e5', borderRadius: '6px' }}>
+          <div>
+            <label htmlFor="ekart-tpin" style={labelStyle}>
+              TPIN
+            </label>
+            <input
+              id="ekart-tpin"
+              type="password"
+              autoComplete="off"
+              placeholder="Enter TPIN"
+              value={tpin}
+              disabled={saving}
+              onChange={(event) => setTpin(event.target.value)}
+              style={fieldStyle}
+            />
+          </div>
+          {textFields.map((field) => {
+            const invalid = field.key === 'baseUrl' && baseUrlInvalid;
+            return (
+              <div key={field.key}>
+                <label htmlFor={field.id} style={labelStyle}>
+                  {field.label}
+                </label>
+                <input
+                  id={field.id}
+                  type={field.type}
+                  autoComplete={field.type === 'password' ? 'new-password' : 'off'}
+                  spellCheck={false}
+                  placeholder={field.placeholder}
+                  value={fields[field.key]}
+                  aria-invalid={invalid}
+                  disabled={saving}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setFields((current) => ({ ...current, [field.key]: value }));
+                  }}
+                  style={{ ...fieldStyle, borderColor: invalid ? '#9A3B1E' : '#ccc' }}
+                />
+                {invalid ? (
+                  <p style={{ fontSize: '13px', margin: '6px 0 0', color: '#9A3B1E' }}>Base URL must start with https://</p>
+                ) : null}
+              </div>
+            );
+          })}
+          <p style={{ fontSize: '13px', margin: 0, color: '#6F6A62', lineHeight: 1.5 }}>
+            Leave a field blank to keep existing value. Static token overrides username/password auth.
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => void saveConfig()}
+              disabled={saveDisabled}
+              style={{
+                background: '#1C2230',
+                color: '#F6F1E8',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: saveDisabled ? 'not-allowed' : 'pointer',
+                opacity: saveDisabled ? 0.5 : 1,
+              }}
+            >
+              {saving ? 'Saving…' : 'Save Ekart Config'}
             </button>
             <button type="button" onClick={closeForm} disabled={saving} style={secondaryButtonStyle}>
               Cancel

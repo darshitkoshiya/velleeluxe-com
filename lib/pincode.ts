@@ -4,7 +4,8 @@
  * Order of attempts:
  *   1. Firestore cache `pincodeCache/{pincode}` (7-day TTL)
  *   2. Shiprocket (needs SHIPROCKET_EMAIL + SHIPROCKET_PASSWORD)
- *   3. Ekart (needs EKART_TOKEN, or EKART_CLIENT_ID + EKART_USERNAME + EKART_PASSWORD)
+ *   3. Ekart (needs EKART_TOKEN, or EKART_CLIENT_ID + EKART_USERNAME + EKART_PASSWORD, or the
+ *      same credentials saved from the admin panel in Firestore `config/ekart.credentials`)
  *   4. Nothing configured / every courier failed → { serviceable: true } so checkout is never blocked
  *      by a courier outage or missing credentials.
  */
@@ -194,32 +195,131 @@ async function checkShiprocket(pincode: string): Promise<ServiceabilityResult> {
 // Ekart (fallback)
 // ---------------------------------------------------------------------------
 
-function ekartBaseUrl(): string {
-  return (process.env.EKART_BASE_URL?.trim() || EKART_DEFAULT_BASE_URL).replace(/\/+$/, '');
+/**
+ * Ekart credentials saved from the admin settings panel. Stored in Firestore `config/ekart`
+ * under a nested `credentials` object so they never clash with the cached `token`/`expiresAt`.
+ */
+export interface EkartStoredCredentials {
+  clientId?: string;
+  username?: string;
+  password?: string;
+  staticToken?: string;
+  baseUrl?: string;
 }
 
-function hasEkartCredentials(): boolean {
+function str(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/** Reads `config/ekart.credentials` from Firestore. Returns {} if missing or unreadable. */
+export async function readEkartStoredCredentials(): Promise<EkartStoredCredentials> {
+  try {
+    const snap = await getAdminDb().collection('config').doc('ekart').get();
+    const creds = asRecord(asRecord(snap.data())?.credentials);
+    if (!creds) return {};
+    return {
+      clientId: str(creds.clientId),
+      username: str(creds.username),
+      password: str(creds.password),
+      staticToken: str(creds.staticToken),
+      baseUrl: str(creds.baseUrl),
+    };
+  } catch (error) {
+    console.warn('[pincode] Could not read Ekart credentials from Firestore:', error);
+    return {};
+  }
+}
+
+type ResolvedEkartAuth =
+  | { kind: 'static'; token: string }
+  | { kind: 'login'; clientId: string; username: string; password: string }
+  | { kind: 'none' };
+
+/**
+ * Picks which Ekart credentials to use, in priority order:
+ *   1. EKART_TOKEN env var
+ *   2. Firestore credentials.staticToken
+ *   3. Firestore credentials.clientId + username + password
+ *   4. EKART_CLIENT_ID + EKART_USERNAME + EKART_PASSWORD env vars
+ */
+function resolveEkartAuth(stored: EkartStoredCredentials): ResolvedEkartAuth {
+  const envToken = process.env.EKART_TOKEN?.trim();
+  if (envToken) return { kind: 'static', token: envToken };
+  if (stored.staticToken) return { kind: 'static', token: stored.staticToken };
+  if (stored.clientId && stored.username && stored.password) {
+    return { kind: 'login', clientId: stored.clientId, username: stored.username, password: stored.password };
+  }
+  const clientId = process.env.EKART_CLIENT_ID?.trim();
+  const username = process.env.EKART_USERNAME?.trim();
+  const password = process.env.EKART_PASSWORD;
+  if (clientId && username && password) return { kind: 'login', clientId, username, password };
+  return { kind: 'none' };
+}
+
+async function ekartBaseUrl(stored?: EkartStoredCredentials): Promise<string> {
+  const creds = stored ?? (await readEkartStoredCredentials());
+  return (creds.baseUrl || process.env.EKART_BASE_URL?.trim() || EKART_DEFAULT_BASE_URL).replace(/\/+$/, '');
+}
+
+function hasEnvEkartCredentials(): boolean {
   return Boolean(
-    process.env.EKART_TOKEN ||
+    process.env.EKART_TOKEN?.trim() ||
       (process.env.EKART_CLIENT_ID && process.env.EKART_USERNAME && process.env.EKART_PASSWORD),
   );
 }
 
+function hasStoredEkartCredentials(stored: EkartStoredCredentials): boolean {
+  return Boolean(stored.staticToken || (stored.clientId && stored.username && stored.password));
+}
+
+/** True if Ekart can be used — credentials in env vars OR saved in Firestore. */
+async function hasEkartCredentials(): Promise<boolean> {
+  if (hasEnvEkartCredentials()) return true;
+  return hasStoredEkartCredentials(await readEkartStoredCredentials());
+}
+
+/** Admin-facing status. Never includes credential values — only whether they exist. */
+export async function getEkartConfigStatus(): Promise<{
+  configured: boolean;
+  source: 'env' | 'firestore' | 'none';
+  hasClientId: boolean;
+  hasToken: boolean;
+}> {
+  const stored = await readEkartStoredCredentials();
+  const auth = resolveEkartAuth(stored);
+  let source: 'env' | 'firestore' | 'none' = 'none';
+  if (auth.kind === 'static') {
+    source = process.env.EKART_TOKEN?.trim() ? 'env' : 'firestore';
+  } else if (auth.kind === 'login') {
+    source = hasStoredEkartCredentials(stored) ? 'firestore' : 'env';
+  }
+  return {
+    configured: auth.kind !== 'none',
+    source,
+    hasClientId: Boolean(stored.clientId || process.env.EKART_CLIENT_ID?.trim()),
+    hasToken: Boolean(process.env.EKART_TOKEN?.trim() || stored.staticToken),
+  };
+}
+
+/** True when the token in use is a pre-issued static token (can't be refreshed). */
+async function usingStaticEkartToken(): Promise<boolean> {
+  return resolveEkartAuth(await readEkartStoredCredentials()).kind === 'static';
+}
+
 /**
  * Bearer token for the Ekart API.
- *   1. EKART_TOKEN env var (pre-issued static token) — used as-is.
+ *   1. Static token (EKART_TOKEN env var, then Firestore credentials.staticToken) — used as-is.
  *   2. Cached token in Firestore `config/ekart` (if not expired).
- *   3. Fresh token from POST /integrations/v2/auth/token/{EKART_CLIENT_ID}, cached for 20h.
+ *   3. Fresh token from POST /integrations/v2/auth/token/{clientId}, cached for 20h.
+ *      clientId/username/password come from Firestore credentials first, then env vars.
  * Returns null on failure so the caller can fall back gracefully.
  */
 async function getEkartToken(forceRefresh = false): Promise<string | null> {
-  const staticToken = process.env.EKART_TOKEN?.trim();
-  if (staticToken) return staticToken;
-
-  const clientId = process.env.EKART_CLIENT_ID;
-  const username = process.env.EKART_USERNAME;
-  const password = process.env.EKART_PASSWORD;
-  if (!clientId || !username || !password) return null;
+  const stored = await readEkartStoredCredentials();
+  const auth = resolveEkartAuth(stored);
+  if (auth.kind === 'static') return auth.token;
+  if (auth.kind === 'none') return null;
+  const { clientId, username, password } = auth;
 
   try {
     const ref = getAdminDb().collection('config').doc('ekart');
@@ -237,7 +337,7 @@ async function getEkartToken(forceRefresh = false): Promise<string | null> {
     }
 
     const { ok, status, json } = await fetchJson(
-      `${ekartBaseUrl()}/integrations/v2/auth/token/${encodeURIComponent(clientId)}`,
+      `${await ekartBaseUrl(stored)}/integrations/v2/auth/token/${encodeURIComponent(clientId)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -253,7 +353,8 @@ async function getEkartToken(forceRefresh = false): Promise<string | null> {
     }
 
     try {
-      await ref.set({ token, expiresAt: Date.now() + EKART_TOKEN_TTL_MS, updatedAt: Date.now() });
+      // merge: true keeps the saved `credentials` object in the same doc.
+      await ref.set({ token, expiresAt: Date.now() + EKART_TOKEN_TTL_MS, updatedAt: Date.now() }, { merge: true });
     } catch (error) {
       console.warn('[pincode] Could not store Ekart token:', error);
     }
@@ -266,7 +367,7 @@ async function getEkartToken(forceRefresh = false): Promise<string | null> {
 
 async function ekartServiceabilityRequest(pincode: string, token: string) {
   const pickupPincode = await getPickupPincode();
-  return fetchJson(`${ekartBaseUrl()}/data/v3/serviceability`, {
+  return fetchJson(`${await ekartBaseUrl()}/data/v3/serviceability`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({
@@ -320,7 +421,7 @@ async function checkEkartServiceability(pincode: string): Promise<Serviceability
 
     let response = await ekartServiceabilityRequest(pincode, token);
     // Cached token may have been revoked early — refresh once (not possible with a static token).
-    if ((response.status === 401 || response.status === 403) && !process.env.EKART_TOKEN?.trim()) {
+    if ((response.status === 401 || response.status === 403) && !(await usingStaticEkartToken())) {
       token = await getEkartToken(true);
       if (!token) return PASSTHROUGH;
       response = await ekartServiceabilityRequest(pincode, token);
@@ -370,7 +471,7 @@ export async function checkPincodeServiceability(pincode: string): Promise<Servi
   }
 
   const hasShiprocket = Boolean(process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD);
-  const hasEkart = hasEkartCredentials();
+  const hasEkart = await hasEkartCredentials();
   if (!hasShiprocket && !hasEkart) return PASSTHROUGH;
 
   const cached = await readCache(pincode);
