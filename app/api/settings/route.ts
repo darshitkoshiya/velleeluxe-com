@@ -16,6 +16,7 @@ export async function GET() {
       codEnabled: settings.codEnabled,
       freeShippingThreshold: settings.freeShippingThreshold,
       returnWindowByCategory: settings.returnWindowByCategory,
+      socialLinks: settings.socialLinks,
     });
   } catch (error) {
     console.error('[api/settings] Failed to read settings:', error);
@@ -23,6 +24,7 @@ export async function GET() {
       codEnabled: DEFAULT_SETTINGS.codEnabled,
       freeShippingThreshold: DEFAULT_SETTINGS.freeShippingThreshold,
       returnWindowByCategory: DEFAULT_SETTINGS.returnWindowByCategory,
+      socialLinks: DEFAULT_SETTINGS.socialLinks,
     });
   }
 }

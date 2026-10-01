@@ -11,8 +11,53 @@ type SettingsResponse = {
   codEnabled?: boolean;
   freeShippingThreshold?: number;
   returnWindowByCategory?: Record<string, number>;
+  socialLinks?: Partial<SocialLinks>;
   error?: string;
 };
+
+/** Mirrors SocialLinks in lib/settings.ts (that file is server-only). */
+type SocialLinks = {
+  instagram: string;
+  facebook: string;
+  twitter: string;
+  youtube: string;
+  pinterest: string;
+};
+
+const EMPTY_SOCIAL_LINKS: SocialLinks = { instagram: '', facebook: '', twitter: '', youtube: '', pinterest: '' };
+
+/** Must match MAX_SOCIAL_LINK_LENGTH in lib/settings.ts (the API enforces it). */
+const MAX_SOCIAL_LINK_LENGTH = 300;
+
+const SOCIAL_FIELDS: { key: keyof SocialLinks; label: string; placeholder: string }[] = [
+  { key: 'instagram', label: 'Instagram URL', placeholder: 'https://instagram.com/velleeluxe' },
+  { key: 'facebook', label: 'Facebook URL', placeholder: 'https://facebook.com/velleeluxe' },
+  { key: 'twitter', label: 'X / Twitter URL', placeholder: 'https://x.com/velleeluxe' },
+  { key: 'youtube', label: 'YouTube URL', placeholder: 'https://youtube.com/@velleeluxe' },
+  { key: 'pinterest', label: 'Pinterest URL', placeholder: 'https://pinterest.com/velleeluxe' },
+];
+
+function toSocialLinks(value: Partial<SocialLinks> | undefined): SocialLinks {
+  const result = { ...EMPTY_SOCIAL_LINKS };
+  for (const { key } of SOCIAL_FIELDS) {
+    const link = value?.[key];
+    if (typeof link === 'string') result[key] = link;
+  }
+  return result;
+}
+
+function socialSnapshot(links: SocialLinks): string {
+  return JSON.stringify(SOCIAL_FIELDS.map(({ key }) => links[key].trim()));
+}
+
+/** Returns an error message if a social link is not empty and not a valid http(s) URL. */
+function socialLinkError(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > MAX_SOCIAL_LINK_LENGTH) return `Keep links under ${MAX_SOCIAL_LINK_LENGTH} characters.`;
+  if (!/^https?:\/\/\S+$/i.test(trimmed)) return 'Enter the full link, starting with https://';
+  return null;
+}
 
 /** One editable category row in the Return Windows section. */
 type CategoryRow = { id: number; name: string; days: string };
@@ -88,6 +133,10 @@ export default function AdminSettingsPage() {
   const [defaultDays, setDefaultDays] = useState('');
   /** Per-category return window rows (may be unsaved). */
   const [categoryRows, setCategoryRows] = useState<CategoryRow[]>([]);
+  /** Snapshot of the saved social links (null until loaded). */
+  const [savedSocialSnapshot, setSavedSocialSnapshot] = useState<string | null>(null);
+  /** Social link boxes (may be unsaved). */
+  const [socialLinks, setSocialLinks] = useState<SocialLinks>(EMPTY_SOCIAL_LINKS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +147,12 @@ export default function AdminSettingsPage() {
     setDefaultDays(state.defaultDays);
     setCategoryRows(state.rows);
     setSavedWindowsSnapshot(windowsSnapshot(state.defaultDays, state.rows));
+  };
+
+  const applySavedSocial = (value: Partial<SocialLinks> | undefined) => {
+    const links = toSocialLinks(value);
+    setSocialLinks(links);
+    setSavedSocialSnapshot(socialSnapshot(links));
   };
 
   useEffect(() => {
@@ -121,6 +176,7 @@ export default function AdminSettingsPage() {
           setSavedThreshold(data.freeShippingThreshold);
           setThresholdInput(String(data.freeShippingThreshold));
           applySavedWindows(data.returnWindowByCategory);
+          applySavedSocial(data.socialLinks);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load settings.');
@@ -146,6 +202,14 @@ export default function AdminSettingsPage() {
       setError(windows.error);
       return;
     }
+    const badSocial = SOCIAL_FIELDS.find(({ key }) => socialLinkError(socialLinks[key]) !== null);
+    if (badSocial) {
+      setError(`${badSocial.label}: ${socialLinkError(socialLinks[badSocial.key])}`);
+      return;
+    }
+    const trimmedSocial = toSocialLinks(
+      Object.fromEntries(SOCIAL_FIELDS.map(({ key }) => [key, socialLinks[key].trim()])) as Partial<SocialLinks>,
+    );
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -157,6 +221,7 @@ export default function AdminSettingsPage() {
           codEnabled,
           freeShippingThreshold: threshold,
           returnWindowByCategory: windows.map,
+          socialLinks: trimmedSocial,
         }),
       });
       const data = (await response.json().catch(() => ({}))) as SettingsResponse;
@@ -174,6 +239,7 @@ export default function AdminSettingsPage() {
       setSavedThreshold(data.freeShippingThreshold);
       setThresholdInput(String(data.freeShippingThreshold));
       applySavedWindows(data.returnWindowByCategory);
+      applySavedSocial(data.socialLinks);
       setMessage(
         `Saved. Cash on Delivery is now ${data.codEnabled ? 'ON' : 'OFF'}, shipping is free on orders of ${formatRupees(data.freeShippingThreshold)} or more, and the default return window is ${data.returnWindowByCategory.default} days.`,
       );
@@ -187,8 +253,11 @@ export default function AdminSettingsPage() {
   const unsaved =
     (savedCod !== null && savedCod !== codEnabled) ||
     (savedThreshold !== null && thresholdInput.trim() !== String(savedThreshold)) ||
-    (savedWindowsSnapshot !== null && savedWindowsSnapshot !== windowsSnapshot(defaultDays, categoryRows));
-  const notLoaded = savedCod === null || savedThreshold === null || savedWindowsSnapshot === null;
+    (savedWindowsSnapshot !== null && savedWindowsSnapshot !== windowsSnapshot(defaultDays, categoryRows)) ||
+    (savedSocialSnapshot !== null && savedSocialSnapshot !== socialSnapshot(socialLinks));
+  const notLoaded =
+    savedCod === null || savedThreshold === null || savedWindowsSnapshot === null || savedSocialSnapshot === null;
+  const socialDisabled = savedSocialSnapshot === null || saving;
   const saveDisabled = saving || notLoaded || !unsaved || thresholdInvalid;
 
   const windowsDisabled = savedWindowsSnapshot === null || saving;
@@ -458,6 +527,48 @@ export default function AdminSettingsPage() {
               <p style={{ fontSize: '13px', color: '#6F6A62', margin: '8px 0 0' }}>
                 Days must be a whole number from 1 to {MAX_RETURN_WINDOW_DAYS}.
               </p>
+            </div>
+
+            <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e5e5e5' }}>
+              <h2 style={{ fontSize: '13px', fontWeight: 600, margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6F6A62' }}>
+                Social Media
+              </h2>
+              <p style={{ fontSize: '14px', color: '#6F6A62', margin: '0 0 16px', lineHeight: 1.5 }}>
+                Paste the full link to each profile. Icons appear in the website footer only for the links you fill in. Leave a box
+                empty to hide that icon.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {SOCIAL_FIELDS.map((field) => {
+                  const id = `social-${field.key}`;
+                  const fieldError = socialLinkError(socialLinks[field.key]);
+                  return (
+                    <div key={field.key}>
+                      <label htmlFor={id} style={{ display: 'block', fontSize: '14px', fontWeight: 600, margin: '0 0 6px' }}>
+                        {field.label}
+                      </label>
+                      <input
+                        id={id}
+                        type="url"
+                        inputMode="url"
+                        value={socialLinks[field.key]}
+                        placeholder={field.placeholder}
+                        maxLength={MAX_SOCIAL_LINK_LENGTH}
+                        aria-invalid={fieldError !== null}
+                        disabled={socialDisabled}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSocialLinks((links) => ({ ...links, [field.key]: value }));
+                          setMessage(null);
+                        }}
+                        style={{ ...inputStyle(fieldError !== null), width: '100%', boxSizing: 'border-box' }}
+                      />
+                      {fieldError ? (
+                        <p style={{ fontSize: '13px', margin: '6px 0 0', color: '#9A3B1E' }}>{fieldError}</p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <div style={{ marginTop: '24px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>

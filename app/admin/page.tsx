@@ -100,6 +100,9 @@ export default async function AdminDashboardPage() {
         <a href="/admin/settings" style={{ ...linkButton, background: '#fff', color: '#1C2230', border: '1px solid #1C2230' }}>
           Settings
         </a>
+        <a href="/admin/suppliers" style={{ ...linkButton, background: '#fff', color: '#1C2230', border: '1px solid #1C2230' }}>
+          Suppliers
+        </a>
       </div>
     </div>
   );

@@ -1,4 +1,16 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useState, type ComponentType } from 'react';
+
+/** Mirrors SocialLinks in lib/settings.ts (set in the admin panel, served by /api/settings). */
+type SocialLinks = {
+  instagram: string;
+  facebook: string;
+  twitter: string;
+  youtube: string;
+  pinterest: string;
+};
 
 const shopLinks = [
   { href: '/shop', label: 'Shop All' },
@@ -32,6 +44,54 @@ function InstagramIcon() {
   );
 }
 
+function FacebookIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+function YouTubeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 17a24.1 24.1 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.6 49.6 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.1 24.1 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.6 49.6 0 0 1-16.2 0A2 2 0 0 1 2.5 17" />
+      <path d="m10 15 5-3-5-3z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PinterestIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M11 13c-.6 2.6-1.1 5.3-2 7.5" />
+      <path d="M10.2 14.3C9.5 13.6 9 12.7 9 11.5 9 9 10.8 7 13.2 7c2.2 0 3.8 1.5 3.8 3.7 0 2.6-1.3 4.6-3.2 4.6-1 0-1.8-.8-1.6-1.8l.7-2.9" />
+    </svg>
+  );
+}
+
+const SOCIAL_PLATFORMS: { key: keyof SocialLinks; label: string; Icon: ComponentType }[] = [
+  { key: 'instagram', label: 'Instagram', Icon: InstagramIcon },
+  { key: 'facebook', label: 'Facebook', Icon: FacebookIcon },
+  { key: 'twitter', label: 'X', Icon: XIcon },
+  { key: 'youtube', label: 'YouTube', Icon: YouTubeIcon },
+  { key: 'pinterest', label: 'Pinterest', Icon: PinterestIcon },
+];
+
+/** Only http(s) links are rendered, so a bad value can never become a javascript: URL. */
+function isSafeUrl(value: unknown): value is string {
+  return typeof value === 'string' && /^https?:\/\/\S+$/i.test(value.trim());
+}
+
 function WhatsAppIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -60,6 +120,26 @@ function LinkColumn({ title, links }: { title: string; links: { href: string; la
 export default function Footer() {
   const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER;
   const whatsappHref = whatsappNumber ? `https://wa.me/${whatsappNumber}` : '#';
+  const [socialLinks, setSocialLinks] = useState<Partial<SocialLinks>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/settings')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { socialLinks?: Partial<SocialLinks> } | null) => {
+        if (!cancelled && data?.socialLinks && typeof data.socialLinks === 'object') {
+          setSocialLinks(data.socialLinks);
+        }
+      })
+      .catch(() => {
+        // Footer still renders without social icons if settings can't load.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const activeSocial = SOCIAL_PLATFORMS.filter(({ key }) => isSafeUrl(socialLinks[key]));
 
   return (
     <footer className="bg-ink text-linen">
@@ -70,9 +150,18 @@ export default function Footer() {
           </Link>
           <p className="mt-2 font-serif text-sm italic text-sand">Premium shirts for modern India.</p>
           <div className="mt-6 flex items-center gap-3">
-            <a href="#" className={socialClass} aria-label="Vellee Luxe on Instagram" target="_blank" rel="noopener noreferrer">
-              <InstagramIcon />
-            </a>
+            {activeSocial.map(({ key, label, Icon }) => (
+              <a
+                key={key}
+                href={(socialLinks[key] as string).trim()}
+                className={socialClass}
+                aria-label={`Vellee Luxe on ${label}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon />
+              </a>
+            ))}
             <a href={whatsappHref} className={socialClass} aria-label="Chat with Vellee Luxe on WhatsApp" target="_blank" rel="noopener noreferrer">
               <WhatsAppIcon />
             </a>

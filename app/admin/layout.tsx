@@ -26,6 +26,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <a href="/admin/orders" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Orders</a>
           <a href="/admin/returns" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Returns</a>
           <a href="/admin/store-credit" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Store Credit</a>
+          <a href="/admin/suppliers" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Suppliers</a>
           <a href="/admin/settings" style={{ color: '#B8B0A4', textDecoration: 'none' }}>Settings</a>
         </nav>
       </div>

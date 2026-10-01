@@ -1,7 +1,8 @@
 /**
  * GET  /api/admin/settings — returns { codEnabled, freeShippingThreshold, returnWindowByCategory }
  * POST /api/admin/settings — body { codEnabled?: boolean, freeShippingThreshold?: number,
- *                                   returnWindowByCategory?: Record<string, number> }
+ *                                   returnWindowByCategory?: Record<string, number>,
+ *                                   socialLinks?: { instagram, facebook, twitter, youtube, pinterest } }
  *                            (at least one field; only the fields sent are changed)
  *
  * Protected by HTTP Basic Auth in middleware.ts.
@@ -14,6 +15,7 @@ import {
   isValidReturnWindowByCategory,
   MAX_FREE_SHIPPING_THRESHOLD,
   MAX_RETURN_WINDOW_DAYS,
+  parseSocialLinks,
   SETTINGS_CACHE_TAG,
   updateStoreSettings,
   type StoreSettings,
@@ -26,6 +28,7 @@ function toResponse(settings: StoreSettings) {
     codEnabled: settings.codEnabled,
     freeShippingThreshold: settings.freeShippingThreshold,
     returnWindowByCategory: settings.returnWindowByCategory,
+    socialLinks: settings.socialLinks,
   };
 }
 
@@ -51,6 +54,7 @@ export async function POST(request: NextRequest) {
     codEnabled?: unknown;
     freeShippingThreshold?: unknown;
     returnWindowByCategory?: unknown;
+    socialLinks?: unknown;
   };
   const updates: Partial<StoreSettings> = {};
 
@@ -91,6 +95,14 @@ export async function POST(request: NextRequest) {
       cleaned[key.trim()] = days;
     }
     updates.returnWindowByCategory = cleaned;
+  }
+
+  if (input.socialLinks !== undefined) {
+    const parsed = parseSocialLinks(input.socialLinks);
+    if ('error' in parsed) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    updates.socialLinks = parsed.links;
   }
 
   if (Object.keys(updates).length === 0) {
