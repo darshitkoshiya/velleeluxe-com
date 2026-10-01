@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 import { useWishlist } from '@/lib/wishlist-store';
 import { HeartIcon } from '@/components/ui/Icons';
 import type { Product } from '@/lib/types';
@@ -13,28 +15,38 @@ interface WishlistButtonProps {
 }
 
 export function WishlistButton({ product, className, withLabel = false }: WishlistButtonProps) {
+  const { user } = useAuth();
   const { isWishlisted, toggleItem } = useWishlist();
+  const router = useRouter();
   const active = isWishlisted(product.id);
+
+  const handleClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!user) {
+      router.push(`/account/login?redirect=/account/wishlist`);
+      return;
+    }
+    toggleItem(product);
+  };
 
   return (
     <button
       type="button"
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleItem(product);
-      }}
-      aria-pressed={active}
-      aria-label={active ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
+      onClick={handleClick}
+      aria-pressed={user ? active : false}
+      aria-label={active && user ? `Remove ${product.name} from wishlist` : `Save ${product.name} to wishlist`}
       className={cn(
         'inline-flex items-center justify-center gap-2 transition-colors hover:text-persimmon',
-        active ? 'text-persimmon' : 'text-ink',
+        active && user ? 'text-persimmon' : 'text-ink',
         className,
       )}
     >
-      <HeartIcon filled={active} />
+      <HeartIcon filled={!!(active && user)} />
       {withLabel ? (
-        <span className="font-sans text-xs font-medium uppercase tracking-[0.14em]">{active ? 'Saved' : 'Save'}</span>
+        <span className="font-sans text-xs font-medium uppercase tracking-[0.14em]">
+          {active && user ? 'Saved' : 'Save'}
+        </span>
       ) : null}
     </button>
   );
