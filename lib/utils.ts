@@ -2,6 +2,8 @@
  * Small helper functions used across the site.
  */
 
+import type { Product } from './types';
+
 /**
  * Default free-shipping threshold (INR). The live value is set by the admin at
  * /admin/settings (Firestore config/settings.freeShippingThreshold); this is only
@@ -149,6 +151,26 @@ export function isValidPincode(pincode: string): boolean {
 export const LAST_ORDER_KEY = 'vl-last-order';
 
 /** Serialises JSON-LD safely for a <script> tag (stops "</script>" in sheet text breaking the page). */
+/** True when the product cannot be bought: stock is 0, or every size in stockBySize is 0. */
+export function isProductOutOfStock(product: Pick<Product, 'stock' | 'stockBySize'>): boolean {
+  if (product.stockBySize && Object.keys(product.stockBySize).length > 0) {
+    return Object.values(product.stockBySize).every((qty) => qty === 0);
+  }
+  return product.stock === 0;
+}
+
+/**
+ * The price to show shoppers. Out-of-stock products show their MRP (compareAtPrice)
+ * because the discounted price isn't available when you can't buy it.
+ * Display only — checkout/order totals always use product.price.
+ */
+export function displayPrice(
+  product: Pick<Product, 'price' | 'compareAtPrice' | 'stock' | 'stockBySize'>,
+): number {
+  if (isProductOutOfStock(product) && product.compareAtPrice) return product.compareAtPrice;
+  return product.price;
+}
+
 export function toJsonLd(data: unknown): string {
   return JSON.stringify(data).replace(/</g, '\u003c');
 }

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useCart } from '@/hooks/useCart';
 import { Button } from '@/components/ui/Button';
 import type { Product } from '@/lib/types';
-import { cn, formatPrice, titleCase } from '@/lib/utils';
+import { cn, displayPrice, formatPrice, titleCase } from '@/lib/utils';
 import { ColourSwatch } from './ColourSwatch';
 import { SizeSelector } from './SizeSelector';
 import { WishlistButton } from './WishlistButton';
@@ -129,7 +129,7 @@ export function AddToCart({ product }: { product: Product }) {
           <div className="min-w-0 flex-1">
             <p className="truncate font-sans text-xs text-ink">{product.name}</p>
             <p className="font-sans text-sm font-medium text-ink">
-              {formatPrice(product.price)}
+              {formatPrice(displayPrice(product))}
               {size ? <span className="ml-2 text-xs font-normal text-slateGrey">Size {size}</span> : null}
             </p>
           </div>

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useCart } from '@/hooks/useCart';
 import { CloseIcon, MinusIcon, PlusIcon } from '@/components/ui/Icons';
 import type { CartItem as CartItemType } from '@/lib/types';
-import { cn, formatPrice, MAX_QUANTITY_PER_ITEM, titleCase } from '@/lib/utils';
+import { cn, displayPrice, formatPrice, MAX_QUANTITY_PER_ITEM, titleCase } from '@/lib/utils';
 
 interface CartItemProps {
   item: CartItemType;
@@ -49,7 +49,7 @@ export function CartItem({ item, variant = 'compact', onNavigate }: CartItemProp
               {product.colour ? <>{titleCase(product.colour)} <span aria-hidden="true">/</span> </> : null}
               Size {size}
             </p>
-            {!large ? <p className="mt-1 font-sans text-xs text-slateGrey">{formatPrice(product.price)} each</p> : null}
+            {!large ? <p className="mt-1 font-sans text-xs text-slateGrey">{formatPrice(displayPrice(product))} each</p> : null}
           </div>
           <button
             type="button"
@@ -84,7 +84,7 @@ export function CartItem({ item, variant = 'compact', onNavigate }: CartItemProp
               <PlusIcon width={14} height={14} />
             </button>
           </div>
-          <p className="font-sans text-sm font-medium text-ink">{formatPrice(product.price * quantity)}</p>
+          <p className="font-sans text-sm font-medium text-ink">{formatPrice(displayPrice(product) * quantity)}</p>
         </div>
       </div>
     </li>

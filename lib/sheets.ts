@@ -678,8 +678,8 @@ Return ONLY valid JSON with these fields (column index 0-based, null if not foun
   "id": null,             // SKU / unique product ID / style code
   "name": null,           // product name / title
   "description": null,    // product description / details
-  "price": null,          // selling price (₹/INR)
-  "compareAtPrice": null, // original/MRP price
+  "price": null,          // selling price / SP / sale price / offer price (₹/INR) — the discounted price
+  "compareAtPrice": null, // MRP / M.R.P. / compare at price / original price / list price / retail price (higher, pre-discount)
   "sizes": null,          // sizes (comma-sep list in one cell — null if sizePerRow)
   "colour": null,         // color / colour / shade
   "fabric": null,         // fabric / material / composition

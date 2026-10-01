@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import type { ColourVariant, Product } from '@/lib/types';
-import { cn, formatPrice, sizeRange } from '@/lib/utils';
+import { cn, displayPrice, formatPrice, isProductOutOfStock, sizeRange } from '@/lib/utils';
 import { ColourSwatch } from './ColourSwatch';
 import { WishlistButton } from './WishlistButton';
 
@@ -27,7 +27,7 @@ export function isNewProduct(product: Product): boolean {
 }
 
 function getBadges(product: Product, bestSeller: boolean): BadgeKind[] {
-  if (product.stock === 0) return ['soldOut'];
+  if (isProductOutOfStock(product)) return ['soldOut'];
   const badges: BadgeKind[] = [];
   if (product.compareAtPrice) badges.push('sale');
   if (isNewProduct(product)) badges.push('new');
@@ -51,10 +51,12 @@ const BADGE_CLASS: Record<BadgeKind, string> = {
 
 export function ProductCard({ product, priority = false, bestSeller = false, colourVariants }: ProductCardProps) {
   const [primaryImage, hoverImage] = product.images;
-  const soldOut = product.stock === 0;
+  const soldOut = isProductOutOfStock(product);
   const badges = getBadges(product, bestSeller);
+  // Out of stock: show MRP only — no strike-through, no discount.
+  const showCompareAt = !soldOut && Boolean(product.compareAtPrice);
   const discount =
-    product.compareAtPrice && product.compareAtPrice > product.price
+    showCompareAt && product.compareAtPrice && product.compareAtPrice > product.price
       ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
       : 0;
 
@@ -117,8 +119,8 @@ export function ProductCard({ product, priority = false, bestSeller = false, col
             {product.name}
           </h3>
           <p className="mt-1 flex flex-wrap items-baseline gap-x-2 font-sans text-[13px]">
-            <span className="font-medium text-ink">{formatPrice(product.price)}</span>
-            {product.compareAtPrice ? (
+            <span className="font-medium text-ink">{formatPrice(displayPrice(product))}</span>
+            {showCompareAt && product.compareAtPrice ? (
               <>
                 <span className="text-pebble line-through">
                   <span className="sr-only">Was </span>

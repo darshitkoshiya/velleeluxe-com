@@ -18,7 +18,7 @@ import {
 } from '@/lib/catalog';
 import { getFreeShippingThreshold } from '@/lib/settings';
 import type { Product } from '@/lib/types';
-import { cn, formatPrice, SITE_URL, titleCase, toJsonLd } from '@/lib/utils';
+import { cn, displayPrice, formatPrice, isProductOutOfStock, SITE_URL, titleCase, toJsonLd } from '@/lib/utils';
 
 // Rebuild each product page at most once a minute; new products are built on first visit.
 export const revalidate = 10800;
@@ -94,8 +94,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
     { label: 'Fit', value: product.fit },
   ].filter((d) => d.value);
 
+  // Out of stock: show MRP only — no strike-through, no discount.
+  const outOfStock = isProductOutOfStock(product);
+  const showCompareAt = !outOfStock && Boolean(product.compareAtPrice);
   const discount =
-    product.compareAtPrice && product.compareAtPrice > product.price
+    showCompareAt && product.compareAtPrice && product.compareAtPrice > product.price
       ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
       : 0;
 
@@ -133,8 +136,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
             <h1 className="mt-2 font-sans text-2xl font-medium leading-tight text-ink md:text-3xl">{product.name}</h1>
 
             <p className="mt-4 flex flex-wrap items-baseline gap-x-3 font-sans">
-              <span className="text-2xl font-medium text-ink">{formatPrice(product.price)}</span>
-              {product.compareAtPrice ? (
+              <span className="text-2xl font-medium text-ink">{formatPrice(displayPrice(product))}</span>
+              {showCompareAt && product.compareAtPrice ? (
                 <>
                   <span className="text-base text-pebble line-through">
                     <span className="sr-only">Was </span>
