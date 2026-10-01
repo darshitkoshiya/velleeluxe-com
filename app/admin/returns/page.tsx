@@ -10,11 +10,13 @@ type Filter = 'all' | ReturnStatus;
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'All' },
-  { value: 'requested', label: 'Requested' },
+  { value: 'pending_review', label: 'Under Review' },
+  { value: 'requested', label: 'Approved' },
   { value: 'pickup_scheduled', label: 'Pickup Scheduled' },
   { value: 'received', label: 'Received' },
   { value: 'inspecting', label: 'Inspecting' },
   { value: 'resolved', label: 'Resolved' },
+  { value: 'rejected', label: 'Rejected' },
 ];
 
 const PAGE_SIZE = 25;

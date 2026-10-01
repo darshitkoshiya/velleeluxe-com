@@ -106,10 +106,15 @@ export default function ReturnPolicyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="No cash refunds">
+      <LegalSection title="Refunds">
         <p>
-          We do not offer cash or bank refunds for returned items, including Cash on Delivery orders. Every eligible
-          return is resolved with an exchange or store credit. Original shipping charges are non-refundable.
+          Eligible returns are resolved with an exchange or store credit. <strong>Cash on Delivery orders are never
+          refunded in cash</strong> — they always receive an exchange or store credit.
+        </p>
+        <p>
+          For orders paid online, in rare cases of a damaged, defective or wrong item, our team may approve a refund of
+          the item price to your original payment method. These refunds are processed through Razorpay and usually
+          reach your account within 5–7 business days. Original shipping charges are non-refundable.
         </p>
       </LegalSection>
 
