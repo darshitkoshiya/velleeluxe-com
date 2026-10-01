@@ -289,7 +289,22 @@ export default function AdminOrdersPage() {
                     </td>
                     <td style={{ ...td, wordBreak: 'break-all' }}>{order.customerEmail}</td>
                     <td style={td}>{itemCount(order)}</td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }}>{formatPrice(order.total || 0)}</td>
+                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                      {formatPrice(order.total || 0)}
+                      {(order.storeCreditApplied ?? 0) > 0 ? (
+                        <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>
+                          Store credit: −{formatPrice(order.storeCreditApplied ?? 0)}
+                        </div>
+                      ) : null}
+                      {(order.discountAmount ?? 0) > 0 ? (
+                        <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>
+                          Discount{order.discountCode ? ` (${order.discountCode})` : ''}: −{formatPrice(order.discountAmount ?? 0)}
+                        </div>
+                      ) : null}
+                      <div style={{ fontSize: '12px', color: '#1C2230', fontWeight: 600, marginTop: '4px' }}>
+                        Charged to payment: {formatPrice(order.amountChargedToPayment ?? (order.total || 0))}
+                      </div>
+                    </td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>{order.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online'}</td>
                     <td style={td}>
                       <span

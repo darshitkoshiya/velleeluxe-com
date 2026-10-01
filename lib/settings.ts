@@ -25,6 +25,16 @@ export interface StoreSettings {
   stockNotFoundBehaviour: StockNotFoundBehaviour;
   /** Items in the homepage "brand promise" strip (icon + title + description). */
   brandPromise: BrandPromiseItem[];
+  /** Warehouse pincode used as the pickup point for courier serviceability checks. */
+  pickupPincode: string;
+}
+
+/** Default warehouse pickup pincode (Surat). */
+export const DEFAULT_PICKUP_PINCODE = '395011';
+
+/** True for exactly 6 digits. */
+export function isValidPickupPincode(v: unknown): v is string {
+  return typeof v === 'string' && /^\d{6}$/.test(v);
 }
 
 export type BrandPromiseIcon =
@@ -156,6 +166,7 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   socialLinks: DEFAULT_SOCIAL_LINKS,
   stockNotFoundBehaviour: 'sold_out',
   brandPromise: DEFAULT_BRAND_PROMISE,
+  pickupPincode: DEFAULT_PICKUP_PINCODE,
 };
 
 /** Highest threshold the admin can set (INR) — guards against typos like 99999999. */
@@ -219,6 +230,7 @@ export async function getStoreSettings(): Promise<StoreSettings> {
       ? data.stockNotFoundBehaviour
       : DEFAULT_SETTINGS.stockNotFoundBehaviour,
     brandPromise: isValidBrandPromise(data?.brandPromise) ? data.brandPromise : DEFAULT_SETTINGS.brandPromise,
+    pickupPincode: isValidPickupPincode(data?.pickupPincode) ? data.pickupPincode : DEFAULT_SETTINGS.pickupPincode,
   };
 }
 
@@ -296,5 +308,23 @@ export const getBrandPromise = unstable_cache(
     }
   },
   ['brand-promise'],
+  { revalidate: 60, tags: [SETTINGS_CACHE_TAG] },
+);
+
+/**
+ * Warehouse pickup pincode for courier serviceability checks (used by lib/pincode.ts).
+ * Cached for 60 seconds and refreshed when the admin saves; falls back to the default
+ * if Firestore is unavailable.
+ */
+export const getPickupPincode = unstable_cache(
+  async (): Promise<string> => {
+    try {
+      return (await getStoreSettings()).pickupPincode;
+    } catch (error) {
+      console.error('[settings] Could not read pickup pincode; using default:', error);
+      return DEFAULT_PICKUP_PINCODE;
+    }
+  },
+  ['pickup-pincode'],
   { revalidate: 60, tags: [SETTINGS_CACHE_TAG] },
 );

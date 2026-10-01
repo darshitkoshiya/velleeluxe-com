@@ -9,6 +9,7 @@
  *      by a courier outage or missing credentials.
  */
 import { getAdminDb } from './firebase-admin';
+import { getPickupPincode } from './settings';
 
 export interface ServiceabilityResult {
   serviceable: boolean;
@@ -20,8 +21,6 @@ export interface ServiceabilityResult {
 
 const CACHE_COLLECTION = 'pincodeCache';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-/** Warehouse pincode used as the pickup point for Shiprocket quotes. */
-const PICKUP_PINCODE = '400001';
 const SHIPROCKET_BASE = 'https://apiv2.shiprocket.in/v1/external';
 /** Shiprocket tokens last 10 days; refresh a day early to be safe. */
 const SHIPROCKET_TOKEN_TTL_MS = 9 * 24 * 60 * 60 * 1000;
@@ -43,8 +42,12 @@ async function readCache(pincode: string): Promise<ServiceabilityResult | null> 
   try {
     const snap = await getAdminDb().collection(CACHE_COLLECTION).doc(pincode).get();
     if (!snap.exists) return null;
-    const data = snap.data() as { result?: ServiceabilityResult; expiresAt?: number } | undefined;
+    const data = snap.data() as
+      | { result?: ServiceabilityResult; expiresAt?: number; pickupPincode?: string }
+      | undefined;
     if (!data?.result || typeof data.expiresAt !== 'number' || data.expiresAt < Date.now()) return null;
+    // Ignore results computed for a different warehouse pickup pincode (older entries have none).
+    if (data.pickupPincode !== (await getPickupPincode())) return null;
     return data.result;
   } catch (error) {
     console.warn('[pincode] Cache read failed:', error);
@@ -54,10 +57,11 @@ async function readCache(pincode: string): Promise<ServiceabilityResult | null> 
 
 async function writeCache(pincode: string, result: ServiceabilityResult, source: string): Promise<void> {
   try {
+    const pickupPincode = await getPickupPincode();
     await getAdminDb()
       .collection(CACHE_COLLECTION)
       .doc(pincode)
-      .set({ result, source, checkedAt: Date.now(), expiresAt: Date.now() + CACHE_TTL_MS });
+      .set({ result, source, pickupPincode, checkedAt: Date.now(), expiresAt: Date.now() + CACHE_TTL_MS });
   } catch (error) {
     console.warn('[pincode] Cache write failed:', error);
   }
@@ -140,8 +144,10 @@ async function getShiprocketToken(forceRefresh = false): Promise<string> {
 }
 
 async function shiprocketServiceability(pincode: string, token: string) {
+  // Warehouse pincode used as the pickup point for Shiprocket quotes (admin-editable in settings).
+  const pickupPincode = await getPickupPincode();
   const url =
-    `${SHIPROCKET_BASE}/courier/serviceability/?pickup_postcode=${PICKUP_PINCODE}` +
+    `${SHIPROCKET_BASE}/courier/serviceability/?pickup_postcode=${pickupPincode}` +
     `&delivery_postcode=${pincode}&cod=1&weight=0.5`;
   return fetchJson(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } });
 }

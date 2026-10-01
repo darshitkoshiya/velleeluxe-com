@@ -783,6 +783,8 @@ export default function AdminSettingsPage() {
 
             <PaymentSettingsSection />
 
+            <PickupPincodeSection />
+
             <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e5e5e5' }}>
               <h2 style={{ fontSize: '13px', fontWeight: 600, margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6F6A62' }}>
                 Stock Defaults
@@ -1106,6 +1108,225 @@ export default function AdminSettingsPage() {
           </p>
         ) : null}
       </section>
+    </div>
+  );
+}
+
+type PickupPincodeResponse = { pickupPincode?: string; error?: string };
+
+/**
+ * Warehouse pickup pincode used for courier delivery checks. Saved on its own (not by the
+ * main Save button) and needs the admin TPIN, which is checked on the server.
+ */
+function PickupPincodeSection() {
+  const [savedPincode, setSavedPincode] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [tpin, setTpin] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch('/api/admin/settings', { cache: 'no-store' });
+        const data = (await response.json().catch(() => ({}))) as PickupPincodeResponse;
+        if (!response.ok || typeof data.pickupPincode !== 'string') {
+          throw new Error(data.error || 'Could not load pickup pincode.');
+        }
+        if (!cancelled) setSavedPincode(data.pickupPincode);
+      } catch (err) {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load pickup pincode.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const closeForm = () => {
+    setEditing(false);
+    setTpin('');
+    setPincode('');
+    setError(null);
+  };
+
+  const trimmedPincode = pincode.trim();
+  const pincodeInvalid = trimmedPincode !== '' && !/^\d{6}$/.test(trimmedPincode);
+  const saveDisabled = saving || !tpin.trim() || !/^\d{6}$/.test(trimmedPincode);
+
+  const savePincode = async () => {
+    if (!tpin.trim()) {
+      setError('Enter your TPIN.');
+      return;
+    }
+    if (!/^\d{6}$/.test(trimmedPincode)) {
+      setError('Pickup pincode must be exactly 6 digits.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tpin: tpin.trim(), pickupPincode: trimmedPincode }),
+      });
+      const data = (await response.json().catch(() => ({}))) as PickupPincodeResponse;
+      if (!response.ok || typeof data.pickupPincode !== 'string') {
+        throw new Error(data.error || 'Could not save pickup pincode.');
+      }
+      setSavedPincode(data.pickupPincode);
+      closeForm();
+      setMessage(`Pickup pincode saved. Delivery checks now use ${data.pickupPincode}.`);
+    } catch (err) {
+      setTpin('');
+      setError(err instanceof Error ? err.message : 'Could not save pickup pincode.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fieldStyle: CSSProperties = {
+    padding: '10px 12px',
+    fontSize: '15px',
+    border: '1px solid #ccc',
+    borderRadius: '6px',
+    background: '#fff',
+    width: '100%',
+    boxSizing: 'border-box',
+  };
+  const labelStyle: CSSProperties = { display: 'block', fontSize: '14px', fontWeight: 600, margin: '0 0 6px' };
+  const secondaryButtonStyle: CSSProperties = {
+    background: 'transparent',
+    color: '#1C2230',
+    border: '1px solid #ccc',
+    borderRadius: '6px',
+    padding: '9px 14px',
+    fontSize: '13px',
+    fontWeight: 500,
+    cursor: saving ? 'not-allowed' : 'pointer',
+    opacity: saving ? 0.5 : 1,
+  };
+
+  return (
+    <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e5e5e5' }}>
+      <h2 style={{ fontSize: '13px', fontWeight: 600, margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6F6A62' }}>
+        Pickup Pincode
+      </h2>
+      <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 6px' }}>Warehouse Pickup Pincode</h3>
+      <p style={{ fontSize: '14px', color: '#6F6A62', margin: '0 0 14px', lineHeight: 1.5 }}>
+        The pincode orders ship from. Courier delivery checks at checkout use it. Requires your admin transaction PIN.
+      </p>
+
+      {loadError ? (
+        <p role="alert" style={{ fontSize: '14px', margin: '0 0 12px', color: '#9A3B1E' }}>
+          {loadError}
+        </p>
+      ) : savedPincode === null ? (
+        <p style={{ fontSize: '14px', margin: '0 0 12px', color: '#6F6A62' }}>Loading…</p>
+      ) : (
+        <div style={{ padding: '12px 14px', border: '1px solid #e5e5e5', borderRadius: '6px', fontSize: '14px', margin: '0 0 12px', lineHeight: 1.6 }}>
+          Current pickup pincode: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{savedPincode}</span>
+        </div>
+      )}
+
+      {!editing ? (
+        <button
+          type="button"
+          disabled={savedPincode === null}
+          onClick={() => {
+            setEditing(true);
+            setPincode(savedPincode ?? '');
+            setMessage(null);
+            setError(null);
+          }}
+          style={{
+            ...secondaryButtonStyle,
+            cursor: savedPincode === null ? 'not-allowed' : 'pointer',
+            opacity: savedPincode === null ? 0.5 : 1,
+          }}
+        >
+          Change Pincode
+        </button>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px', border: '1px solid #e5e5e5', borderRadius: '6px' }}>
+          <div>
+            <label htmlFor="pickup-tpin" style={labelStyle}>
+              TPIN
+            </label>
+            <input
+              id="pickup-tpin"
+              type="password"
+              autoComplete="off"
+              placeholder="Enter TPIN"
+              value={tpin}
+              disabled={saving}
+              onChange={(event) => setTpin(event.target.value)}
+              style={fieldStyle}
+            />
+          </div>
+          <div>
+            <label htmlFor="pickup-pincode" style={labelStyle}>
+              Pickup Pincode
+            </label>
+            <input
+              id="pickup-pincode"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={6}
+              placeholder="e.g. 395011"
+              value={pincode}
+              aria-invalid={pincodeInvalid}
+              disabled={saving}
+              onChange={(event) => setPincode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              style={{ ...fieldStyle, borderColor: pincodeInvalid ? '#9A3B1E' : '#ccc' }}
+            />
+            <p style={{ fontSize: '13px', margin: '6px 0 0', color: pincodeInvalid ? '#9A3B1E' : '#6F6A62' }}>
+              {pincodeInvalid ? 'Enter exactly 6 digits.' : 'Must be exactly 6 digits.'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => void savePincode()}
+              disabled={saveDisabled}
+              style={{
+                background: '#1C2230',
+                color: '#F6F1E8',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: saveDisabled ? 'not-allowed' : 'pointer',
+                opacity: saveDisabled ? 0.5 : 1,
+              }}
+            >
+              {saving ? 'Saving…' : 'Save Pincode'}
+            </button>
+            <button type="button" onClick={closeForm} disabled={saving} style={secondaryButtonStyle}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {message ? (
+        <p role="status" style={{ margin: '12px 0 0', fontSize: '14px', color: '#1E6B45' }}>
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" style={{ margin: '12px 0 0', fontSize: '14px', color: '#9A3B1E' }}>
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

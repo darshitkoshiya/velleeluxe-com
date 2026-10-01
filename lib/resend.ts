@@ -140,7 +140,28 @@ ${rows}
 ${summaryRow('Subtotal', formatPrice(order.subtotal))}
 ${summaryRow('Shipping', order.shippingFee > 0 ? formatPrice(order.shippingFee) : 'Free')}
 ${summaryRow('Total', formatPrice(order.total), true)}
+${paymentBreakdownRows(order, summaryRow)}
 </table>`;
+}
+
+/** Amount actually charged to the payment method (after store credit). */
+function amountCharged(order: Order): number {
+  return order.amountChargedToPayment ?? order.total;
+}
+
+/** Store credit / discount / amount-charged rows shown below the Total line (empty when neither applies). */
+function paymentBreakdownRows(order: Order, summaryRow: (name: string, value: string, bold?: boolean) => string): string {
+  const storeCredit = order.storeCreditApplied ?? 0;
+  const discount = order.discountAmount ?? 0;
+  if (storeCredit <= 0 && discount <= 0) return '';
+  const rows: string[] = [];
+  if (storeCredit > 0) rows.push(summaryRow('Store credit applied', `&minus;${formatPrice(storeCredit)}`));
+  if (discount > 0) {
+    const code = order.discountCode ? ` (${escapeHtml(order.discountCode)})` : '';
+    rows.push(summaryRow(`Discount${code}`, `&minus;${formatPrice(discount)}`));
+  }
+  rows.push(summaryRow('Amount charged', formatPrice(amountCharged(order)), true));
+  return rows.join('\n');
 }
 
 function addressBlock(order: Order): string {
@@ -187,7 +208,7 @@ export async function sendOrderConfirmation(order: Order): Promise<void> {
   const paymentCell = `
           ${label('Payment')}
           <p style="margin:0;font-family:${SANS};font-size:14px;color:${BRAND.ink};">${paymentLabel(order)}</p>
-          ${order.paymentMethod === 'cod' ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;color:${BRAND.slateGrey};">Please keep ${formatPrice(order.total)} ready at delivery.</p>` : ''}`;
+          ${order.paymentMethod === 'cod' ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;color:${BRAND.slateGrey};">Please keep ${formatPrice(amountCharged(order))} ready at delivery.</p>` : ''}`;
   const detailsTable = template.showShippingAddress
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:32px;">
       <tr>

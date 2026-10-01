@@ -4,8 +4,10 @@
  *                                   returnWindowByCategory?: Record<string, number>,
  *                                   socialLinks?: { instagram, facebook, twitter, youtube, pinterest },
  *                                   stockNotFoundBehaviour?: 'sold_out' | 'unlimited',
- *                                   brandPromise?: { icon, title, description }[] }
+ *                                   brandPromise?: { icon, title, description }[],
+ *                                   pickupPincode?: string, tpin?: string }
  *                            (at least one field; only the fields sent are changed)
+ *                            pickupPincode needs the admin TPIN (wrong -> 401 "Incorrect TPIN").
  *
  * Protected by HTTP Basic Auth in middleware.ts.
  */
@@ -15,6 +17,7 @@ import {
   getStoreSettings,
   isValidBrandPromise,
   isValidFreeShippingThreshold,
+  isValidPickupPincode,
   isValidReturnWindowByCategory,
   isValidShippingFee,
   isValidStockNotFoundBehaviour,
@@ -29,6 +32,7 @@ import {
   type BrandPromiseItem,
   type StoreSettings,
 } from '@/lib/settings';
+import { assertAdminTpin, StoreCreditError } from '@/lib/store-credit';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +45,7 @@ function toResponse(settings: StoreSettings) {
     socialLinks: settings.socialLinks,
     stockNotFoundBehaviour: settings.stockNotFoundBehaviour,
     brandPromise: settings.brandPromise,
+    pickupPincode: settings.pickupPincode,
   };
 }
 
@@ -70,8 +75,27 @@ export async function POST(request: NextRequest) {
     socialLinks?: unknown;
     stockNotFoundBehaviour?: unknown;
     brandPromise?: unknown;
+    pickupPincode?: unknown;
+    tpin?: unknown;
   };
   const updates: Partial<StoreSettings> = {};
+
+  if (input.pickupPincode !== undefined) {
+    // Changing the warehouse pincode affects every delivery check, so it needs the admin TPIN.
+    try {
+      assertAdminTpin(input.tpin);
+    } catch (error) {
+      if (error instanceof StoreCreditError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      return NextResponse.json({ error: 'Could not verify TPIN.' }, { status: 500 });
+    }
+    const pincode = typeof input.pickupPincode === 'string' ? input.pickupPincode.trim() : input.pickupPincode;
+    if (!isValidPickupPincode(pincode)) {
+      return NextResponse.json({ error: 'Pickup pincode must be exactly 6 digits.' }, { status: 400 });
+    }
+    updates.pickupPincode = pincode;
+  }
 
   if (input.codEnabled !== undefined) {
     if (typeof input.codEnabled !== 'boolean') {
