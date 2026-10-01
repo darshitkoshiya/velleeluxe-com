@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getProducts } from '@/lib/sheets';
+import { getLiveCatalogProducts } from '@/lib/catalog';
 
-// Rebuild this response at most once every 60 seconds.
-export const revalidate = 60;
+// Rebuild this response at most once every 3 hours (override writes revalidate the layout).
+export const revalidate = 10800;
 
 export async function GET() {
   try {
-    const products = await getProducts();
+    // Uses the live catalogue so admin overrides (price, title, hidden) are respected.
+    const products = await getLiveCatalogProducts();
     return NextResponse.json(products);
   } catch (error) {
     console.error('[api/products] Failed:', error);

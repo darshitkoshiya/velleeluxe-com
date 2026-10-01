@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import type { Product } from '@/lib/types';
+import type { ColourVariant, Product } from '@/lib/types';
 import { cn, formatPrice, sizeRange } from '@/lib/utils';
 import { ColourSwatch } from './ColourSwatch';
 import { WishlistButton } from './WishlistButton';
@@ -14,6 +14,8 @@ interface ProductCardProps {
   priority?: boolean;
   /** Show the "Best Seller" badge. */
   bestSeller?: boolean;
+  /** All colours of this product's design (including itself). Dots shown when 2+. */
+  colourVariants?: ColourVariant[];
 }
 
 type BadgeKind = 'soldOut' | 'sale' | 'new' | 'bestSeller';
@@ -47,7 +49,7 @@ const BADGE_CLASS: Record<BadgeKind, string> = {
   bestSeller: 'bg-linen text-ink',
 };
 
-export function ProductCard({ product, priority = false, bestSeller = false }: ProductCardProps) {
+export function ProductCard({ product, priority = false, bestSeller = false, colourVariants }: ProductCardProps) {
   const [primaryImage, hoverImage] = product.images;
   const soldOut = product.stock === 0;
   const badges = getBadges(product, bestSeller);
@@ -127,7 +129,20 @@ export function ProductCard({ product, priority = false, bestSeller = false }: P
             ) : null}
           </p>
           <div className="mt-2 flex items-center justify-between gap-2">
-            {product.colour ? <ColourSwatch colour={product.colour} showLabel /> : <span />}
+            <div className="flex items-center gap-1">
+              {colourVariants && colourVariants.length > 1 ? (
+                colourVariants.map((v) => (
+                  <ColourSwatch
+                    key={v.slug}
+                    colour={v.colour}
+                    size="sm"
+                    className={v.slug === product.slug ? 'opacity-100' : 'opacity-50'}
+                  />
+                ))
+              ) : product.colour ? (
+                <ColourSwatch colour={product.colour} showLabel />
+              ) : null}
+            </div>
             {product.sizes.length > 0 ? (
               <span className="font-sans text-[11px] uppercase tracking-[0.1em] text-slateGrey">
                 {sizeRange(product.sizes)}

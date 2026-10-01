@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -55,14 +55,34 @@ interface AddressFormProps {
   initialValues?: Partial<AddressFormValues>;
   onSubmit: (values: AddressFormValues) => void;
   submitLabel?: string;
+  /** Check courier delivery availability as the pincode is typed (checkout only). */
+  checkServiceability?: boolean;
 }
+
+interface ServiceabilityResponse {
+  serviceable: boolean;
+  courier?: string;
+  estimatedDays?: string;
+  cod?: boolean;
+  error?: string;
+}
+
+type ServiceabilityState =
+  | { status: 'idle' }
+  | { status: 'checking'; pincode: string }
+  | { status: 'done'; pincode: string; result: ServiceabilityResponse };
 
 type FieldName = 'email' | 'name' | 'phone' | 'line1' | 'line2' | 'city' | 'state' | 'pincode';
 type Errors = Partial<Record<FieldName, string>>;
 
 const FIELD_ORDER: FieldName[] = ['email', 'name', 'phone', 'line1', 'city', 'state', 'pincode'];
 
-export function AddressForm({ initialValues, onSubmit, submitLabel = 'Continue to Payment' }: AddressFormProps) {
+export function AddressForm({
+  initialValues,
+  onSubmit,
+  submitLabel = 'Continue to Payment',
+  checkServiceability = false,
+}: AddressFormProps) {
   const initial = initialValues?.address;
   const [values, setValues] = useState<Record<FieldName, string>>({
     email: initialValues?.email ?? '',
@@ -75,6 +95,52 @@ export function AddressForm({ initialValues, onSubmit, submitLabel = 'Continue t
     pincode: initial?.pincode ?? '',
   });
   const [errors, setErrors] = useState<Errors>({});
+  const [serviceability, setServiceability] = useState<ServiceabilityState>({ status: 'idle' });
+
+  // Auto-check delivery availability once a full 6-digit pincode is entered (debounced).
+  const pincodeValue = values.pincode.trim();
+  useEffect(() => {
+    if (!checkServiceability || !/^\d{6}$/.test(pincodeValue)) {
+      setServiceability({ status: 'idle' });
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setServiceability({ status: 'checking', pincode: pincodeValue });
+      try {
+        const response = await fetch('/api/pincode/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pincode: pincodeValue }),
+          signal: controller.signal,
+        });
+        const data = (await response.json().catch(() => null)) as ServiceabilityResponse | null;
+        if (cancelled) return;
+        // Anything unexpected is treated as "unknown" — never block checkout on a flaky courier API.
+        if (!data || typeof data.serviceable !== 'boolean') {
+          setServiceability({ status: 'idle' });
+          return;
+        }
+        setServiceability({ status: 'done', pincode: pincodeValue, result: data });
+      } catch {
+        if (!cancelled) setServiceability({ status: 'idle' });
+      }
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [checkServiceability, pincodeValue]);
+
+  // Only a definite "no courier delivers here" answer (serviceable: false + error) blocks submission.
+  const pincodeBlocked =
+    serviceability.status === 'done' &&
+    serviceability.pincode === pincodeValue &&
+    !serviceability.result.serviceable &&
+    Boolean(serviceability.result.error);
+  const showPincodeStatus = checkServiceability && !errors.pincode && serviceability.status !== 'idle';
 
   const update = (field: FieldName) => (event: { target: { value: string } }) => {
     setValues((current) => ({ ...current, [field]: event.target.value }));
@@ -101,6 +167,11 @@ export function AddressForm({ initialValues, onSubmit, submitLabel = 'Continue t
     const firstError = FIELD_ORDER.find((field) => nextErrors[field]);
     if (firstError) {
       document.getElementById(`address-${firstError}`)?.focus();
+      return;
+    }
+
+    if (pincodeBlocked) {
+      document.getElementById('address-pincode')?.focus();
       return;
     }
 
@@ -182,17 +253,43 @@ export function AddressForm({ initialValues, onSubmit, submitLabel = 'Continue t
           error={errors.city}
           required
         />
-        <Input
-          id="address-pincode"
-          label="Pincode"
-          inputMode="numeric"
-          autoComplete="postal-code"
-          maxLength={6}
-          value={values.pincode}
-          onChange={update('pincode')}
-          error={errors.pincode}
-          required
-        />
+        <div>
+          <Input
+            id="address-pincode"
+            label="Pincode"
+            inputMode="numeric"
+            autoComplete="postal-code"
+            maxLength={6}
+            value={values.pincode}
+            onChange={update('pincode')}
+            error={errors.pincode}
+            {...(showPincodeStatus ? { 'aria-describedby': 'address-pincode-status' } : {})}
+            required
+          />
+          {showPincodeStatus ? (
+            <p id="address-pincode-status" role="status" aria-live="polite" className="mt-2 font-sans text-xs">
+              {serviceability.status === 'checking' ? (
+                <span className="text-slateGrey">Checking delivery availability…</span>
+              ) : serviceability.result.serviceable ? (
+                <span className="flex flex-wrap items-center gap-2 text-green-700">
+                  <span>
+                    &#10003; Delivery available
+                    {serviceability.result.estimatedDays ? ` · ${serviceability.result.estimatedDays}` : ''}
+                  </span>
+                  {serviceability.result.cod ? (
+                    <span className="border border-green-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wider">
+                      COD available
+                    </span>
+                  ) : null}
+                </span>
+              ) : (
+                <span className="text-red-600">
+                  &#10007; Delivery not available to this pincode. Please try a different address.
+                </span>
+              )}
+            </p>
+          ) : null}
+        </div>
       </div>
       <Select
         id="address-state"

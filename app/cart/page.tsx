@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCart } from '@/hooks/useCart';
-import { useFreeShippingThreshold } from '@/hooks/useFreeShippingThreshold';
+import { useFreeShippingThreshold, useShippingFee } from '@/hooks/useFreeShippingThreshold';
 import { CartItem } from '@/components/cart/CartItem';
 import { buttonClasses } from '@/components/ui/Button';
 import { PageLoader } from '@/components/ui/LoadingSpinner';
@@ -11,6 +11,7 @@ import { calculateShipping, formatPrice } from '@/lib/utils';
 export default function CartPage() {
   const { items, subtotal, totalItems, hydrated } = useCart();
   const freeShippingThreshold = useFreeShippingThreshold();
+  const shippingFee = useShippingFee();
 
   if (!hydrated) return <PageLoader label="Loading your cart" />;
 
@@ -26,7 +27,7 @@ export default function CartPage() {
     );
   }
 
-  const shipping = calculateShipping(subtotal, freeShippingThreshold);
+  const shipping = calculateShipping(subtotal, freeShippingThreshold, shippingFee);
   const remaining = freeShippingThreshold - subtotal;
 
   return (

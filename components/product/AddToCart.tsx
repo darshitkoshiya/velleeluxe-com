@@ -21,7 +21,20 @@ export function AddToCart({ product }: { product: Product }) {
   const selectorRef = useRef<HTMLDivElement>(null);
   const buttonRowRef = useRef<HTMLDivElement>(null);
   const soldOut = product.stock === 0;
-  const lowStock = typeof product.stock === 'number' && product.stock > 0 && product.stock <= 5;
+  const disabledSizes = product.stockBySize
+    ? product.sizes.filter((s) => (product.stockBySize![s] ?? 0) === 0)
+    : soldOut
+      ? product.sizes
+      : [];
+  const selectedSizeStock = size && product.stockBySize ? product.stockBySize[size] : undefined;
+  const lowStock =
+    selectedSizeStock !== undefined
+      ? selectedSizeStock > 0 && selectedSizeStock <= 5
+      : typeof product.stock === 'number' && product.stock > 0 && product.stock <= 5;
+  const lowStockLabel =
+    selectedSizeStock !== undefined && lowStock
+      ? `Only ${selectedSizeStock} left in size ${size}`
+      : `Only ${product.stock} left — order soon.`;
 
   useEffect(() => {
     const target = buttonRowRef.current;
@@ -83,14 +96,14 @@ export function AddToCart({ product }: { product: Product }) {
                 setSize(value);
                 setError(undefined);
               }}
-              disabledSizes={soldOut ? product.sizes : []}
+              disabledSizes={disabledSizes}
               error={error}
             />
           </div>
         ) : null}
 
         {lowStock ? (
-          <p className="font-sans text-xs text-persimmon">Only {product.stock} left — order soon.</p>
+          <p className="font-sans text-xs text-persimmon">{lowStockLabel}</p>
         ) : null}
 
         <div ref={buttonRowRef} className="flex items-stretch gap-3">

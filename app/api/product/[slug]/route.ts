@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getProductBySlug } from '@/lib/sheets';
+import { getLiveCatalogProducts } from '@/lib/catalog';
 
-export const revalidate = 60;
+export const revalidate = 10800;
 
 export async function GET(_request: Request, { params }: { params: { slug: string } }) {
   try {
-    const product = await getProductBySlug(decodeURIComponent(params.slug));
+    const slug = decodeURIComponent(params.slug);
+    // Uses the live catalogue so admin overrides (price, title, hidden) are respected.
+    const products = await getLiveCatalogProducts();
+    const product = products.find((p) => p.slug === slug);
     if (!product) {
       return NextResponse.json({ error: 'Product not found.' }, { status: 404 });
     }

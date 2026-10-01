@@ -15,6 +15,7 @@ export async function GET() {
     return NextResponse.json({
       codEnabled: settings.codEnabled,
       freeShippingThreshold: settings.freeShippingThreshold,
+      shippingFee: settings.shippingFee,
       returnWindowByCategory: settings.returnWindowByCategory,
       socialLinks: settings.socialLinks,
     });
@@ -23,6 +24,7 @@ export async function GET() {
     return NextResponse.json({
       codEnabled: DEFAULT_SETTINGS.codEnabled,
       freeShippingThreshold: DEFAULT_SETTINGS.freeShippingThreshold,
+      shippingFee: DEFAULT_SETTINGS.shippingFee,
       returnWindowByCategory: DEFAULT_SETTINGS.returnWindowByCategory,
       socialLinks: DEFAULT_SETTINGS.socialLinks,
     });

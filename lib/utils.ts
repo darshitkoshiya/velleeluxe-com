@@ -9,7 +9,11 @@
  */
 export const FREE_SHIPPING_THRESHOLD = 999;
 
-/** Flat delivery charge (INR) for orders below the free-shipping threshold. */
+/**
+ * Default flat delivery charge (INR) for orders below the free-shipping threshold.
+ * The live value is set by the admin at /admin/settings (Firestore
+ * config/settings.shippingFee); this is only the fallback.
+ */
 export const SHIPPING_FEE = 99;
 
 /** Maximum quantity of a single item (size) per order. */
@@ -28,9 +32,13 @@ export function formatPrice(amount: number): string {
   }).format(amount);
 }
 
-export function calculateShipping(subtotal: number, freeShippingThreshold: number = FREE_SHIPPING_THRESHOLD): number {
+export function calculateShipping(
+  subtotal: number,
+  freeShippingThreshold: number = FREE_SHIPPING_THRESHOLD,
+  shippingFee: number = SHIPPING_FEE,
+): number {
   if (subtotal <= 0 || subtotal >= freeShippingThreshold) return 0;
-  return SHIPPING_FEE;
+  return shippingFee;
 }
 
 export function generateOrderId(): string {

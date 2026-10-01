@@ -5,7 +5,8 @@
  * Gmail, Outlook and Apple Mail. The wordmark is styled text (no images).
  */
 import { Resend } from 'resend';
-import type { ContactRequest, Order, TrackingInfo } from './types';
+import { fillPlaceholders, getEmailTemplatesSafe } from './email-templates';
+import type { ContactRequest, Order, ReturnRequest, TrackingInfo } from './types';
 import { escapeHtml, formatDate, formatPrice, SITE_URL, SUPPORT_EMAIL } from './utils';
 
 const BRAND = {
@@ -151,6 +152,25 @@ function addressBlock(order: Order): string {
   return `<p style="margin:0;font-family:${SANS};font-size:14px;line-height:1.7;color:${BRAND.ink};">${lines}</p>`;
 }
 
+/** Admin-editable text (from lib/email-templates.ts) as safe HTML: escaped, line breaks kept. */
+function templateText(text: string, values: { orderId?: string } = {}): string {
+  return escapeHtml(fillPlaceholders(text, values)).replace(/\r?\n/g, '<br>');
+}
+
+/** Closing paragraph from a template's footerText (omitted when blank). */
+function footerParagraph(text: string, values: { orderId?: string } = {}, margin = '32px 0 0'): string {
+  return text.trim()
+    ? `<p style="margin:${margin};font-style:italic;color:${BRAND.slateGrey};">${templateText(text, values)}</p>`
+    : '';
+}
+
+/** Main heading from a template's headerText (omitted when blank). */
+function headerHeading(text: string, values: { orderId?: string } = {}): string {
+  return text.trim()
+    ? `<h1 style="margin:0 0 16px;font-family:${SANS};font-size:24px;font-weight:500;color:${BRAND.ink};">${templateText(text, values)}</h1>`
+    : '';
+}
+
 function paymentLabel(order: Order): string {
   return order.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Paid online (Razorpay)';
 }
@@ -159,34 +179,41 @@ function paymentLabel(order: Order): string {
 /* Emails                                                              */
 /* ------------------------------------------------------------------ */
 
-/** Customer: "Thank you for your order". */
+/** Customer: "Thank you for your order". Wording comes from the orderConfirmation template. */
 export async function sendOrderConfirmation(order: Order): Promise<void> {
+  const template = (await getEmailTemplatesSafe()).orderConfirmation;
+  const values = { orderId: order.orderId };
   const firstName = escapeHtml(order.customerName.split(' ')[0] || 'there');
-  const content = `
-    ${label('Order confirmed')}
-    <h1 style="margin:0 0 16px;font-family:${SANS};font-size:24px;font-weight:500;color:${BRAND.ink};">Thank you, ${firstName}.</h1>
-    <p style="margin:0 0 24px;">Your order <strong style="font-family:${SANS};font-weight:500;">${escapeHtml(order.orderId)}</strong> has been received and is being prepared with care. It will reach you within 5&ndash;7 business days.</p>
-    <p style="margin:0 0 32px;font-style:italic;color:${BRAND.slateGrey};">We&rsquo;ll notify you once your order ships.</p>
-    ${label('Your order')}
-    ${itemsTable(order)}
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:32px;">
+  const paymentCell = `
+          ${label('Payment')}
+          <p style="margin:0;font-family:${SANS};font-size:14px;color:${BRAND.ink};">${paymentLabel(order)}</p>
+          ${order.paymentMethod === 'cod' ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;color:${BRAND.slateGrey};">Please keep ${formatPrice(order.total)} ready at delivery.</p>` : ''}`;
+  const detailsTable = template.showShippingAddress
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:32px;">
       <tr>
         <td valign="top" style="padding-right:16px;width:50%;">
           ${label('Shipping to')}
           ${addressBlock(order)}
         </td>
-        <td valign="top" style="width:50%;">
-          ${label('Payment')}
-          <p style="margin:0;font-family:${SANS};font-size:14px;color:${BRAND.ink};">${paymentLabel(order)}</p>
-          ${order.paymentMethod === 'cod' ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:13px;color:${BRAND.slateGrey};">Please keep ${formatPrice(order.total)} ready at delivery.</p>` : ''}
+        <td valign="top" style="width:50%;">${paymentCell}
         </td>
       </tr>
-    </table>
+    </table>`
+    : `<div style="margin-top:32px;">${paymentCell}
+    </div>`;
+  const content = `
+    ${label('Order confirmed')}
+    ${headerHeading(template.headerText, values)}
+    <p style="margin:0 0 32px;">Hi ${firstName}, your order <strong style="font-family:${SANS};font-weight:500;">${escapeHtml(order.orderId)}</strong> has been received and is being prepared with care. It will reach you within 5&ndash;7 business days.</p>
+    ${template.showOrderSummary ? `${label('Your order')}
+    ${itemsTable(order)}` : ''}
+    ${detailsTable}
+    ${footerParagraph(template.footerText, values)}
     ${button('View your orders', `${SITE_URL}/account/orders`)}
   `;
   await send({
     to: order.customerEmail,
-    subject: `Your Vellee Luxe order ${order.orderId} is confirmed`,
+    subject: fillPlaceholders(template.subject, values),
     html: layout(content, `Order ${order.orderId} confirmed — ${formatPrice(order.total)}`),
   });
 }
@@ -234,22 +261,25 @@ export async function sendOrderNotification(order: Order): Promise<void> {
   });
 }
 
-/** Customer: "Your order is on its way". */
+/** Customer: "Your order is on its way". Wording comes from the orderShipped template. */
 export async function sendShippingConfirmation(order: Order, trackingInfo?: TrackingInfo): Promise<void> {
+  const template = (await getEmailTemplatesSafe()).orderShipped;
+  const values = { orderId: order.orderId };
   const firstName = escapeHtml(order.customerName.split(' ')[0] || 'there');
   const trackingParts = trackingInfo
     ? [trackingInfo.courier, trackingInfo.trackingNumber].filter((part) => Boolean(part && part.trim())).map(escapeHtml)
     : [];
-  const tracking = trackingInfo && trackingParts.length > 0
+  const showTracking = template.showTrackingInfo && trackingInfo !== undefined && trackingParts.length > 0;
+  const tracking = showTracking
     ? `${label('Tracking')}
        <p style="margin:0 0 8px;font-family:${SANS};font-size:14px;">${trackingParts.join(' &middot; ')}</p>
-       ${trackingInfo.url ? button('Track your parcel', trackingInfo.url) : ''}`
+       ${trackingInfo?.url ? button('Track your parcel', trackingInfo.url) : ''}`
     : '';
 
   const content = `
     ${label('Shipped')}
-    <h1 style="margin:0 0 16px;font-family:${SANS};font-size:24px;font-weight:500;">Your order is on its way, ${firstName}.</h1>
-    <p style="margin:0 0 32px;">Order <strong style="font-family:${SANS};font-weight:500;">${escapeHtml(order.orderId)}</strong> has left us and should reach you in the next few days.</p>
+    ${headerHeading(template.headerText, values)}
+    <p style="margin:0 0 32px;">Hi ${firstName}, order <strong style="font-family:${SANS};font-weight:500;">${escapeHtml(order.orderId)}</strong> has left us and should reach you in the next few days.</p>
     ${tracking}
     <div style="margin-top:24px;">
       ${label('In this parcel')}
@@ -259,12 +289,55 @@ export async function sendShippingConfirmation(order: Order, trackingInfo?: Trac
       ${label('Delivering to')}
       ${addressBlock(order)}
     </div>
-    ${trackingInfo?.url ? '' : button('View your orders', `${SITE_URL}/account/orders`)}
+    ${footerParagraph(template.footerText, values)}
+    ${showTracking && trackingInfo?.url ? '' : button('View your orders', `${SITE_URL}/account/orders`)}
   `;
   await send({
     to: order.customerEmail,
-    subject: `Your Vellee Luxe order ${order.orderId} has shipped`,
+    subject: fillPlaceholders(template.subject, values),
     html: layout(content, `Order ${order.orderId} is on its way`),
+  });
+}
+
+/** Customer: return received. Wording comes from the returnConfirmed template. */
+export async function sendReturnConfirmation(request: ReturnRequest): Promise<void> {
+  const template = (await getEmailTemplatesSafe()).returnConfirmed;
+  const values = { orderId: request.orderId };
+  const firstName = escapeHtml(request.customerName.split(' ')[0] || 'there');
+  const content = `
+    ${label('Return confirmed')}
+    ${headerHeading(template.headerText, values)}
+    <p style="margin:0 0 24px;">Hi ${firstName}, we&rsquo;ve logged your return <strong style="font-family:${SANS};font-weight:500;">${escapeHtml(request.returnId)}</strong> for order <strong style="font-family:${SANS};font-weight:500;">${escapeHtml(request.orderId)}</strong>.</p>
+    ${label('Item')}
+    <p style="margin:0;font-family:${SANS};font-size:14px;line-height:1.7;color:${BRAND.ink};">
+      ${escapeHtml(request.itemProductName)}<br>
+      <span style="font-size:12px;color:${BRAND.slateGrey};">Size ${escapeHtml(request.itemSize)} &middot; ${formatPrice(request.itemPrice)}</span>
+    </p>
+    ${footerParagraph(template.footerText, values)}
+    ${button('View your orders', `${SITE_URL}/account/orders`)}
+  `;
+  await send({
+    to: request.customerEmail,
+    subject: fillPlaceholders(template.subject, values),
+    html: layout(content, `Return for order ${request.orderId} confirmed`),
+  });
+}
+
+/** Customer: password reset link (sent from the admin customer drawer). Wording comes from the passwordReset template. */
+export async function sendPasswordResetEmail(to: string, link: string): Promise<void> {
+  const template = (await getEmailTemplatesSafe()).passwordReset;
+  const content = `
+    ${label('Password reset')}
+    ${headerHeading(template.headerText)}
+    <p style="margin:0 0 8px;">Click the link below to reset your password:</p>
+    ${button('Reset password', link)}
+    <p style="margin:0;font-family:${SANS};font-size:12px;color:${BRAND.slateGrey};word-break:break-all;">${escapeHtml(link)}</p>
+    ${footerParagraph(template.footerText, {}, '16px 0 0')}
+  `;
+  await send({
+    to,
+    subject: fillPlaceholders(template.subject, {}),
+    html: layout(content, 'Click the link below to reset your password'),
   });
 }
 

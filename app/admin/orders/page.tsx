@@ -86,6 +86,33 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Optional ?email= filter (linked from /admin/customers).
+  const [emailFilter, setEmailFilter] = useState('');
+  // Optional ?search= order ID filter (linked from the customer drawer).
+  const [orderIdFilter, setOrderIdFilter] = useState('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get('email');
+    if (email) setEmailFilter(email.trim().toLowerCase());
+    const search = params.get('search');
+    if (search) setOrderIdFilter(search.trim().toUpperCase());
+  }, []);
+
+  const clearEmailFilter = () => {
+    setEmailFilter('');
+    setOrderIdFilter('');
+    const url = new URL(window.location.href);
+    url.searchParams.delete('email');
+    url.searchParams.delete('search');
+    window.history.replaceState(null, '', url.toString());
+  };
+
+  const visibleOrders = orders.filter(
+    (order) =>
+      (!emailFilter || (order.customerEmail ?? '').trim().toLowerCase() === emailFilter) &&
+      (!orderIdFilter || (order.orderId ?? '').toUpperCase() === orderIdFilter),
+  );
 
   // "Mark as Shipped" modal
   const [shipping, setShipping] = useState<Order | null>(null);
@@ -183,6 +210,23 @@ export default function AdminOrdersPage() {
         </button>
       </div>
 
+      {emailFilter || orderIdFilter ? (
+        <div
+          style={{ background: '#E3EDF7', color: '#2F5577', padding: '10px 16px', borderRadius: '6px', marginBottom: '16px', fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <span style={{ wordBreak: 'break-all' }}>
+            {orderIdFilter ? (
+              <>Showing order <strong>{orderIdFilter}</strong></>
+            ) : (
+              <>Showing orders for <strong>{emailFilter}</strong></>
+            )}
+          </span>
+          <button type="button" onClick={clearEmailFilter} style={{ ...secondaryButton, padding: '6px 12px' }}>
+            {orderIdFilter ? 'Show all orders' : 'Show all customers'}
+          </button>
+        </div>
+      ) : null}
+
       {notice ? (
         <div
           role="status"
@@ -223,14 +267,15 @@ export default function AdminOrdersPage() {
                   Loading orders…
                 </td>
               </tr>
-            ) : orders.length === 0 ? (
+            ) : visibleOrders.length === 0 ? (
               <tr>
                 <td style={{ ...td, textAlign: 'center', color: '#6F6A62' }} colSpan={9}>
-                  No orders {filter === 'all' ? 'yet' : `with status "${filter}"`}.
+                  No orders {filter === 'all' ? 'yet' : `with status "${filter}"`}
+                  {emailFilter ? ` for ${emailFilter}` : ''}.
                 </td>
               </tr>
             ) : (
-              orders.map((order) => {
+              visibleOrders.map((order) => {
                 const colours = STATUS_COLOURS[order.status] ?? { bg: '#eee', fg: '#333' };
                 const canShip = order.status === 'confirmed' || order.status === 'processing';
                 return (

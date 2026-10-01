@@ -16,6 +16,7 @@ import { getAdminAuth, getAdminDb } from './firebase-admin';
 import { getOrder } from './orders';
 import { verifyReturnPhotos } from './photo-verification';
 import { getRazorpay } from './razorpay';
+import { sendReturnConfirmation } from './resend';
 import { getProductsByIds } from './sheets';
 import { assertAdminTpin, storeCreditRef, writeStoreCreditEntry } from './store-credit';
 import {
@@ -444,6 +445,13 @@ export async function updateReturn(
 
     transaction.set(ref, next);
     return next;
+  }).then((resolved) => {
+    if (resolved.status === 'resolved') {
+      sendReturnConfirmation(resolved).catch((err) =>
+        console.error('[returns] Could not send return confirmation email:', err),
+      );
+    }
+    return resolved;
   });
 }
 
@@ -488,11 +496,12 @@ async function refundViaRazorpay(returnId: string, update: AdminReturnUpdate): P
   try {
     // If an earlier attempt reached Razorpay but crashed before saving, reuse that refund
     // instead of refunding twice.
-    const previous = await getRazorpay()
+    const razorpay = await getRazorpay();
+    const previous = await razorpay
       .payments.fetchMultipleRefund(order.razorpayPaymentId, { count: 100 })
       .then((list) => list.items.find((item) => item.notes?.returnId === locked.returnId))
       .catch(() => undefined);
-    refund = previous ?? await getRazorpay().payments.refund(order.razorpayPaymentId, {
+    refund = previous ?? await razorpay.payments.refund(order.razorpayPaymentId, {
       amount: Math.round(amount * 100),
       speed: 'normal',
       receipt: locked.returnId,
@@ -526,5 +535,8 @@ async function refundViaRazorpay(returnId: string, update: AdminReturnUpdate): P
   };
   // Full overwrite: `refundStartedAt` is undefined here, so the lock field is removed.
   await ref.set(resolved);
+  sendReturnConfirmation(resolved).catch((err) =>
+    console.error('[returns] Could not send return confirmation email (razorpay path):', err),
+  );
   return resolved;
 }

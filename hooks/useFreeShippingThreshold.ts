@@ -1,35 +1,52 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { FREE_SHIPPING_THRESHOLD } from '@/lib/utils';
+import { FREE_SHIPPING_THRESHOLD, SHIPPING_FEE } from '@/lib/utils';
 
 /**
- * Free-shipping threshold (INR) set by the admin at /admin/settings, read from the
- * public /api/settings endpoint. Shows the default from lib/utils until it loads.
+ * Shipping settings set by the admin at /admin/settings (free-shipping threshold and
+ * flat shipping fee), read from the public /api/settings endpoint. Shows the defaults
+ * from lib/utils until they load.
  *
  * The request is shared by every component on the page and repeated at most once a minute.
  */
 const REFRESH_AFTER_MS = 60_000;
 
-let cachedValue: number | null = null;
-let cachedAt = 0;
-let inFlight: Promise<number> | null = null;
+interface ShippingSettings {
+  freeShippingThreshold: number;
+  shippingFee: number;
+}
 
-function loadThreshold(): Promise<number> {
+const DEFAULTS: ShippingSettings = {
+  freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
+  shippingFee: SHIPPING_FEE,
+};
+
+let cachedValue: ShippingSettings | null = null;
+let cachedAt = 0;
+let inFlight: Promise<ShippingSettings> | null = null;
+
+function readAmount(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function loadShippingSettings(): Promise<ShippingSettings> {
   if (cachedValue !== null && Date.now() - cachedAt < REFRESH_AFTER_MS) {
     return Promise.resolve(cachedValue);
   }
   if (!inFlight) {
     inFlight = fetch('/api/settings', { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : null))
-      .then((data: { freeShippingThreshold?: unknown } | null) => {
-        const value = data?.freeShippingThreshold;
-        const threshold = typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : FREE_SHIPPING_THRESHOLD;
-        cachedValue = threshold;
+      .then((data: { freeShippingThreshold?: unknown; shippingFee?: unknown } | null) => {
+        const settings: ShippingSettings = {
+          freeShippingThreshold: readAmount(data?.freeShippingThreshold, DEFAULTS.freeShippingThreshold),
+          shippingFee: readAmount(data?.shippingFee, DEFAULTS.shippingFee),
+        };
+        cachedValue = settings;
         cachedAt = Date.now();
-        return threshold;
+        return settings;
       })
-      .catch(() => cachedValue ?? FREE_SHIPPING_THRESHOLD)
+      .catch(() => cachedValue ?? DEFAULTS)
       .finally(() => {
         inFlight = null;
       });
@@ -37,18 +54,27 @@ function loadThreshold(): Promise<number> {
   return inFlight;
 }
 
-export function useFreeShippingThreshold(): number {
-  const [threshold, setThreshold] = useState<number>(cachedValue ?? FREE_SHIPPING_THRESHOLD);
+function useShippingSettings(): ShippingSettings {
+  const [settings, setSettings] = useState<ShippingSettings>(cachedValue ?? DEFAULTS);
 
   useEffect(() => {
     let cancelled = false;
-    void loadThreshold().then((value) => {
-      if (!cancelled) setThreshold(value);
+    void loadShippingSettings().then((value) => {
+      if (!cancelled) setSettings(value);
     });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  return threshold;
+  return settings;
+}
+
+export function useFreeShippingThreshold(): number {
+  return useShippingSettings().freeShippingThreshold;
+}
+
+/** Flat shipping fee (INR) charged on orders below the free-shipping threshold. */
+export function useShippingFee(): number {
+  return useShippingSettings().shippingFee;
 }

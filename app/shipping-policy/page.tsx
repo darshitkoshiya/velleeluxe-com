@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalPage, LegalSection } from '@/components/layout/LegalPage';
-import { getFreeShippingThreshold } from '@/lib/settings';
-import { formatPrice, SHIPPING_FEE, SUPPORT_EMAIL } from '@/lib/utils';
+import { getFreeShippingThreshold, getShippingFee } from '@/lib/settings';
+import { formatPrice, SUPPORT_EMAIL } from '@/lib/utils';
 
-// Re-render at most once a minute so the free-shipping amount follows the admin setting.
+// Re-render at most once a minute so the shipping amounts follow the admin settings.
 export const revalidate = 60;
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -17,7 +17,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function ShippingPolicyPage() {
-  const threshold = formatPrice(await getFreeShippingThreshold());
+  const [thresholdAmount, shippingFee] = await Promise.all([getFreeShippingThreshold(), getShippingFee()]);
+  const threshold = formatPrice(thresholdAmount);
 
   return (
     <LegalPage
@@ -42,7 +43,7 @@ export default async function ShippingPolicyPage() {
           <li>
             <strong>Free shipping</strong> on all orders of {threshold} and above.
           </li>
-          <li>A flat delivery charge of {formatPrice(SHIPPING_FEE)} applies to orders below {threshold}.</li>
+          <li>A flat delivery charge of {formatPrice(shippingFee)} applies to orders below {threshold}.</li>
         </ul>
         <p>The exact charge is shown at checkout before you pay. All prices include applicable taxes.</p>
       </LegalSection>

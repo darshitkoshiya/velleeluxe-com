@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import type { CSSProperties, ReactNode } from 'react';
+import { BrandPromiseIcon, type BrandPromiseIconKey } from '@/components/home/BrandPromiseIcon';
 import { ProductCard } from '@/components/product/ProductCard';
 import { useInView } from '@/hooks/useInView';
 import type { Product } from '@/lib/types';
-import { FREE_SHIPPING_THRESHOLD, formatPrice } from '@/lib/utils';
 
 /* ------------------------------------------------------------------ */
 /* Shared helpers                                                      */
@@ -190,53 +190,43 @@ function FeaturedProducts({ products }: { products: Product[] }) {
 /* 4. Brand promise                                                    */
 /* ------------------------------------------------------------------ */
 
-function TruckIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">
-      <path d="M3 6h11v10H3zM14 9h4l3 3v4h-7" strokeLinejoin="round" />
-      <circle cx="7" cy="17.5" r="1.75" />
-      <circle cx="17.5" cy="17.5" r="1.75" />
-    </svg>
-  );
+/** Mirrors BrandPromiseItem in lib/settings.ts (which is server-only). */
+interface BrandPromiseItemClient {
+  icon: BrandPromiseIconKey;
+  title: string;
+  description: string;
 }
 
-function ReturnIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">
-      <path d="M4 9h11a5 5 0 0 1 0 10H9" strokeLinecap="round" />
-      <path d="M8 5 4 9l4 4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+/** Mirrors DEFAULT_BRAND_PROMISE in lib/settings.ts. */
+const DEFAULT_BRAND_PROMISE_CLIENT: BrandPromiseItemClient[] = [
+  { icon: 'truck', title: 'Free Shipping', description: 'On all orders over ₹999, delivered across India.' },
+  { icon: 'return', title: '7-Day Returns', description: 'Not the right fit? Return or exchange within seven days.' },
+  { icon: 'chat', title: 'WhatsApp Support', description: 'Real people, quick answers on sizing, orders and more.' },
+];
 
-function ChatIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">
-      <path d="M4 19.5 5.3 16A8 8 0 1 1 8 18.7z" strokeLinejoin="round" />
-      <path d="M9 11h.01M12 11h.01M15 11h.01" strokeLinecap="round" strokeWidth="2" />
-    </svg>
-  );
-}
+// Static class names so Tailwind picks them up; columns follow the item count on desktop.
+const PROMISE_COLUMNS: Record<number, string> = {
+  1: 'md:grid-cols-1',
+  2: 'md:grid-cols-2',
+  3: 'md:grid-cols-3',
+  4: 'md:grid-cols-2 lg:grid-cols-4',
+  5: 'md:grid-cols-3',
+  6: 'md:grid-cols-3',
+};
 
-function BrandPromise({ freeShippingThreshold }: { freeShippingThreshold: number }) {
-  const promises = [
-    {
-      title: 'Free Shipping',
-      body: `On all orders over ${formatPrice(freeShippingThreshold)}, delivered across India.`,
-      icon: <TruckIcon />,
-    },
-    { title: '7-Day Returns', body: 'Not the right fit? Return or exchange within seven days.', icon: <ReturnIcon /> },
-    { title: 'WhatsApp Support', body: 'Real people, quick answers on sizing, orders and more.', icon: <ChatIcon /> },
-  ];
-
+function BrandPromise({ items }: { items: BrandPromiseItemClient[] }) {
   return (
     <section className="bg-ink py-20 text-linen md:py-28">
-      <div className="container-page grid grid-cols-1 gap-12 md:grid-cols-3 md:gap-8">
-        {promises.map((promise, index) => (
-          <Reveal key={promise.title} delay={index * 100} className="flex flex-col items-center text-center">
-            <span className="text-sand">{promise.icon}</span>
+      <div className={`container-page grid grid-cols-1 gap-12 md:gap-8 ${PROMISE_COLUMNS[items.length] ?? 'md:grid-cols-3'}`}>
+        {items.map((promise, index) => (
+          <Reveal key={`${index}-${promise.title}`} delay={index * 100} className="flex flex-col items-center text-center">
+            <span className="text-sand">
+              <BrandPromiseIcon icon={promise.icon} />
+            </span>
             <h3 className="mt-5 font-serif text-2xl text-white">{promise.title}</h3>
-            <p className="mt-3 max-w-xs font-sans text-sm leading-relaxed text-pebble">{promise.body}</p>
+            {promise.description && (
+              <p className="mt-3 max-w-xs font-sans text-sm leading-relaxed text-pebble">{promise.description}</p>
+            )}
           </Reveal>
         ))}
       </div>
@@ -340,18 +330,23 @@ function FinalCta() {
 
 export default function HomeView({
   featuredProducts,
-  freeShippingThreshold = FREE_SHIPPING_THRESHOLD,
+  brandPromise = DEFAULT_BRAND_PROMISE_CLIENT,
 }: {
   featuredProducts: Product[];
-  /** Admin-set threshold (INR) from lib/settings; defaults to the lib/utils fallback. */
+  /**
+   * Admin-set threshold (INR) from lib/settings. Currently unused here — the brand promise
+   * text is fully admin-editable — but kept so callers can keep passing it.
+   */
   freeShippingThreshold?: number;
+  /** Admin-edited brand promise items from lib/settings; defaults to the built-in three. */
+  brandPromise?: BrandPromiseItemClient[];
 }) {
   return (
     <>
       <Hero />
       <FabricStory />
       <FeaturedProducts products={featuredProducts} />
-      <BrandPromise freeShippingThreshold={freeShippingThreshold} />
+      <BrandPromise items={brandPromise.length > 0 ? brandPromise : DEFAULT_BRAND_PROMISE_CLIENT} />
       <CraftStory />
       <FinalCta />
     </>

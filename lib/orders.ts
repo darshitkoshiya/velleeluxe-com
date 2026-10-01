@@ -6,10 +6,14 @@
  * - Saves orders to Firestore (source of truth) and copies them to Google Sheets.
  * - Marks orders as paid exactly once, so emails are never sent twice.
  */
+import { revalidateTag } from 'next/cache';
 import { getAdminDb } from './firebase-admin';
-import { appendOrder, getProducts, updateOrderInSheet } from './sheets';
+import { appendOrder, updateOrderInSheet } from './sheets';
+import { getLiveCatalogProducts } from './catalog';
 import { sendOrderConfirmation, sendOrderNotification } from './resend';
 import { DEFAULT_SETTINGS, getStoreSettings } from './settings';
+import { incrementDiscountUsage, normaliseDiscountCode, validateDiscountCode } from './discount-codes';
+import { deductStoreCredit, getStoreCreditBalance } from './store-credit';
 import type {
   Address,
   CreateOrderRequest,
@@ -30,6 +34,18 @@ import {
 } from './utils';
 
 const ORDERS_COLLECTION = 'orders';
+
+/** Same value as ANALYTICS_CACHE_TAG in lib/analytics.ts (not imported, to avoid a circular import). */
+const ANALYTICS_CACHE_TAG = 'analytics';
+
+/** Clears the cached admin analytics after an order is created or changes status. */
+function revalidateAnalytics(): void {
+  try {
+    revalidateTag(ANALYTICS_CACHE_TAG);
+  } catch (error) {
+    console.error('[orders] Could not revalidate analytics cache:', error);
+  }
+}
 
 /** Thrown for problems the customer can fix (bad input, unavailable product). */
 export class OrderValidationError extends Error {}
@@ -108,9 +124,23 @@ export function validateOrderRequest(body: unknown): ValidationResult<CreateOrde
   const items = validateItems(body.items);
   if (!items.ok) return items;
 
+  let discountCode: string | undefined;
+  if (body.discountCode !== undefined && body.discountCode !== null && body.discountCode !== '') {
+    discountCode = normaliseDiscountCode(body.discountCode);
+    if (!discountCode) return { ok: false, error: 'This discount code is not valid.' };
+  }
+
+  let storeCreditToApply: number | undefined;
+  if (body.storeCreditToApply !== undefined && body.storeCreditToApply !== null && body.storeCreditToApply !== '') {
+    const requested = Number(body.storeCreditToApply);
+    if (!Number.isFinite(requested) || requested < 0) return { ok: false, error: 'Invalid store credit amount.' };
+    if (requested > 0) storeCreditToApply = requested;
+  }
+
   return {
     ok: true,
     data: {
+      storeCreditToApply,
       customerName: str(body.customerName, 100) || address.data.name,
       customerEmail,
       customerPhone: address.data.phone,
@@ -118,6 +148,7 @@ export function validateOrderRequest(body: unknown): ValidationResult<CreateOrde
       items: items.data,
       paymentMethod,
       notes: str(body.notes, 500) || undefined,
+      discountCode,
     },
   };
 }
@@ -128,7 +159,8 @@ export function validateOrderRequest(body: unknown): ValidationResult<CreateOrde
 
 /** Creates a full Order, pricing every line from the live catalogue. */
 export async function buildOrder(request: CreateOrderRequest, customerId: string): Promise<Order> {
-  const products = await getProducts();
+  // Includes admin price overrides and manual products, so checkout charges what the shop shows.
+  const products = await getLiveCatalogProducts();
   if (products.length === 0) {
     throw new Error('Product catalogue is unavailable.');
   }
@@ -167,14 +199,40 @@ export async function buildOrder(request: CreateOrderRequest, customerId: string
 
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   // Free-shipping threshold comes from the admin panel (falls back to the default if unreadable).
+  // Flat shipping fee also comes from the admin panel.
   let freeShippingThreshold = DEFAULT_SETTINGS.freeShippingThreshold;
+  let flatShippingFee = DEFAULT_SETTINGS.shippingFee;
   try {
-    freeShippingThreshold = (await getStoreSettings()).freeShippingThreshold;
+    ({ freeShippingThreshold, shippingFee: flatShippingFee } = await getStoreSettings());
   } catch (error) {
-    console.error('[orders] Could not read store settings; using default free-shipping threshold:', error);
+    console.error('[orders] Could not read store settings; using default shipping settings:', error);
   }
-  const shippingFee = calculateShipping(subtotal, freeShippingThreshold);
+  // Discount code is re-validated on the server against the server-calculated subtotal.
+  let discountAmount = 0;
+  let discountCode: string | undefined;
+  if (request.discountCode) {
+    const result = await validateDiscountCode(request.discountCode, subtotal);
+    if (!result.valid) throw new OrderValidationError(result.error);
+    discountAmount = result.discountAmount;
+    discountCode = result.code.code;
+  }
+  const discountedSubtotal = subtotal - discountAmount;
+
+  // Shipping is calculated on the discounted subtotal.
+  const shippingFee = calculateShipping(discountedSubtotal, freeShippingThreshold, flatShippingFee);
+  const total = discountedSubtotal + shippingFee;
   const now = new Date().toISOString();
+
+  // Store credit: signed-in customers only. The balance is re-read from Firestore (never trusted
+  // from the browser) and capped to the order total. It is deducted in saveNewOrder after saving.
+  let storeCreditApplied = 0;
+  const requestedCredit = Number(request.storeCreditToApply ?? 0);
+  if (customerId !== 'guest' && Number.isFinite(requestedCredit) && requestedCredit > 0) {
+    const balance = await getStoreCreditBalance(customerId);
+    storeCreditApplied = roundRupees(Math.max(0, Math.min(requestedCredit, balance, total)));
+  }
+  const amountChargedToPayment = roundRupees(Math.max(0, total - storeCreditApplied));
+  const fullyCoveredByCredit = storeCreditApplied > 0 && amountChargedToPayment === 0;
 
   return {
     orderId: generateOrderId(),
@@ -186,19 +244,55 @@ export async function buildOrder(request: CreateOrderRequest, customerId: string
     items,
     subtotal,
     shippingFee,
-    total: subtotal + shippingFee,
+    total,
     paymentMethod: request.paymentMethod,
-    // COD orders are confirmed immediately; online orders wait for payment.
-    status: request.paymentMethod === 'cod' ? 'confirmed' : 'pending',
+    // COD orders and orders fully paid by store credit are confirmed immediately;
+    // online orders wait for payment.
+    status: request.paymentMethod === 'cod' || fullyCoveredByCredit ? 'confirmed' : 'pending',
     createdAt: now,
     updatedAt: now,
-    notes: request.notes,
+    // Firestore rejects undefined fields, so only include notes when present.
+    ...(request.notes ? { notes: request.notes } : {}),
+    ...(discountCode ? { discountCode, discountAmount } : {}),
+    ...(storeCreditApplied > 0 ? { storeCreditApplied } : {}),
+    ...(discountCode || storeCreditApplied > 0 ? { amountChargedToPayment } : {}),
   };
 }
 
-/** Saves to Firestore, then copies to Sheets (a Sheets failure never loses the order). */
+function roundRupees(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
+/** What is still due by Razorpay / cash after store credit. */
+export function amountDue(order: Order): number {
+  return typeof order.amountChargedToPayment === 'number' ? order.amountChargedToPayment : order.total;
+}
+
+/**
+ * Saves to Firestore, then copies to Sheets (a Sheets failure never loses the order).
+ * Store credit is deducted only AFTER the order is saved; a failed deduction is logged
+ * (the admin can fix the ledger) but never fails the order.
+ */
 export async function saveNewOrder(order: Order): Promise<void> {
   await getAdminDb().collection(ORDERS_COLLECTION).doc(order.orderId).set(order);
+  revalidateAnalytics();
+  if (order.customerId !== 'guest' && order.storeCreditApplied && order.storeCreditApplied > 0) {
+    try {
+      await deductStoreCredit(order.customerId, order.storeCreditApplied, order.orderId);
+    } catch (error) {
+      console.error(
+        `[orders] Could not deduct ${order.storeCreditApplied} store credit from ${order.customerId} for order ${order.orderId} — fix the ledger manually:`,
+        error,
+      );
+    }
+  }
+  if (order.discountCode) {
+    try {
+      await incrementDiscountUsage(order.discountCode);
+    } catch (error) {
+      console.error(`[orders] Could not increment usage for discount code ${order.discountCode}:`, error);
+    }
+  }
   try {
     await appendOrder(order);
   } catch (error) {
@@ -262,6 +356,7 @@ export async function markOrderPaid(
   });
 
   if (result.changed) {
+    revalidateAnalytics();
     await safeSheetUpdate(orderId, {
       status: 'confirmed',
       razorpayOrderId,
@@ -322,6 +417,7 @@ export async function markOrderShipped(
     return { ...order, status: 'shipped', shippingInfo, updatedAt: now } as Order;
   });
 
+  revalidateAnalytics();
   await safeSheetUpdate(orderId, { status: 'shipped', updatedAt: now });
   return updated;
 }

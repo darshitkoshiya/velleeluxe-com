@@ -22,8 +22,67 @@ export interface Product {
   seoDescription: string;
   status: ProductStatus;
   stock: number | 'unlimited';
+  /** Per-size warehouse stock from the supplier's Inventory Report, e.g. { S: 0, M: 10 }. */
+  stockBySize?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
+  /** Links colour variants of the same design. Products sharing a designId are siblings. */
+  designId?: string;
+  /** Set from the admin panel (productOverrides / manualProducts). */
+  featured?: boolean;
+  /** 'manual' for products added directly in the admin panel; sheet products leave this unset. */
+  source?: 'sheet' | 'manual';
+}
+
+/* ------------------------------------------------------------------ */
+/* Admin product management                                            */
+/* ------------------------------------------------------------------ */
+
+/** Firestore productOverrides/{productId} — admin edits layered on top of a sheet product. */
+export interface ProductOverride {
+  productId: string;
+  priceOverride?: number;
+  titleOverride?: string;
+  descriptionOverride?: string;
+  featured?: boolean;
+  hidden?: boolean;
+  updatedAt: string;
+}
+
+/** Firestore manualProducts/{slug} — a product added directly in the admin panel. */
+export interface ManualProduct {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  price: number;
+  images: string[];
+  sizes: string[];
+  colour: string;
+  fabric?: string;
+  stock: number;
+  featured?: boolean;
+  hidden?: boolean;
+  isManual: true;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One row in the admin products list (overrides applied, hidden products included). */
+export interface AdminProduct extends Product {
+  source: 'sheet' | 'manual';
+  featured: boolean;
+  hidden: boolean;
+  /** Sheet values before overrides (sheet products only). */
+  original?: { name: string; description: string; price: number };
+  /** The raw override document, if any (sheet products only). */
+  override?: ProductOverride;
+}
+
+/** One colour option of a design, used for swatch dots on product cards. */
+export interface ColourVariant {
+  colour: string;
+  slug: string;
 }
 
 export interface CartItem {
@@ -86,6 +145,37 @@ export interface Order {
   notes?: string;
   /** Set from the admin panel when the order is marked as shipped. */
   shippingInfo?: ShippingInfo;
+  /** Discount code applied at checkout (uppercase), if any. */
+  discountCode?: string;
+  /** INR discount applied to the subtotal. */
+  discountAmount?: number;
+  /** INR paid by store credit (not cash). */
+  storeCreditApplied?: number;
+  /** total - storeCreditApplied (total already has the discount taken off). 0 = fully paid by store credit. */
+  amountChargedToPayment?: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* Discount codes                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Firestore discountCodes/{code}. */
+export interface DiscountCode {
+  /** Uppercase, e.g. "LAUNCH10". */
+  code: string;
+  /** Percent off, or a fixed INR amount off. */
+  type: 'percent' | 'fixed';
+  /** 10 = 10% off, or ₹10 off. */
+  value: number;
+  /** Minimum subtotal (INR) needed to use the code. */
+  minOrderAmount?: number;
+  /** Unset/null = unlimited. */
+  maxUses?: number | null;
+  usedCount: number;
+  active: boolean;
+  /** ISO date; the code stops working after this. */
+  expiresAt?: string;
+  createdAt: string;
 }
 
 export interface ShippingInfo {
@@ -241,6 +331,10 @@ export interface CreateOrderRequest {
   items: OrderRequestItem[];
   paymentMethod: PaymentMethod;
   notes?: string;
+  /** Optional discount code; validated again on the server. */
+  discountCode?: string;
+  /** Requested store credit amount (INR); the server re-checks the real balance and caps it. */
+  storeCreditToApply?: number;
 }
 
 export interface CreateOrderResponse {
@@ -252,6 +346,12 @@ export interface CreatePaymentResponse {
   amount: number;
   currency: string;
   keyId: string;
+}
+
+/** Returned by /api/payment/create-order when store credit covers the whole order (no Razorpay needed). */
+export interface SkipPaymentResponse {
+  skip: true;
+  orderId: string;
 }
 
 export interface VerifyPaymentRequest {

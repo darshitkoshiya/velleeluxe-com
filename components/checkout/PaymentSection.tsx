@@ -13,6 +13,7 @@ import type {
   CreatePaymentResponse,
   Order,
   PaymentMethod,
+  SkipPaymentResponse,
   VerifyPaymentRequest,
 } from '@/lib/types';
 import { cn, formatPrice, LAST_ORDER_KEY } from '@/lib/utils';
@@ -97,10 +98,17 @@ interface PaymentSectionProps {
   address: Address;
   email: string;
   items: CartItem[];
+  /** Amount still due after store credit (what Razorpay / cash on delivery collects). */
   total: number;
+  /** Applied discount code, re-validated by the server when the order is created. */
+  discountCode?: string;
+  /** Store credit the customer chose to apply; the server re-checks the real balance and caps it. */
+  storeCreditToApply?: number;
 }
 
-export function PaymentSection({ address, email, items, total }: PaymentSectionProps) {
+export function PaymentSection({ address, email, items, total, discountCode, storeCreditToApply = 0 }: PaymentSectionProps) {
+  /** Store credit covers everything: no payment method, just a free "Place Order". */
+  const fullyCoveredByCredit = storeCreditToApply > 0 && total <= 0;
   const router = useRouter();
   const { user } = useAuth();
   const { clearCart } = useCart();
@@ -160,6 +168,8 @@ export function PaymentSection({ address, email, items, total }: PaymentSectionP
       shippingAddress: address,
       items: items.map((item) => ({ productId: item.product.id, size: item.size, quantity: item.quantity })),
       paymentMethod,
+      ...(discountCode ? { discountCode } : {}),
+      ...(user && storeCreditToApply > 0 ? { storeCreditToApply } : {}),
     };
     const { order } = await postJson<CreateOrderResponse>('/api/orders', request, token);
     return order;
@@ -181,18 +191,26 @@ export function PaymentSection({ address, email, items, total }: PaymentSectionP
     setProcessing(true);
     setError(null);
     try {
+      const order = pendingOrder ?? (await createOrder('razorpay'));
+      setPendingOrder(order);
+
+      const payment = await postJson<CreatePaymentResponse | SkipPaymentResponse>('/api/payment/create-order', {
+        orderId: order.orderId,
+      });
+
+      // Store credit covered the whole order — it is already confirmed, no Razorpay needed.
+      if ('skip' in payment && payment.skip) {
+        finish(order);
+        return;
+      }
+      if (!('razorpayOrderId' in payment)) {
+        throw new Error('Could not start payment.');
+      }
+
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded || !window.Razorpay) {
         throw new Error('Could not load the payment window. Please check your connection and try again.');
       }
-
-      const order = pendingOrder ?? (await createOrder('razorpay'));
-      setPendingOrder(order);
-
-      const payment = await postJson<CreatePaymentResponse>('/api/payment/create-order', {
-        orderId: order.orderId,
-        amount: order.total,
-      });
 
       const razorpay = new window.Razorpay({
         key: payment.keyId,
@@ -255,6 +273,11 @@ export function PaymentSection({ address, email, items, total }: PaymentSectionP
         Payment
       </h2>
 
+      {fullyCoveredByCredit ? (
+        <p className="border border-sand bg-sand/40 p-5 font-serif text-sm text-ink">
+          Your store credit covers this whole order — no payment needed.
+        </p>
+      ) : (
       <fieldset className="space-y-3" disabled={processing}>
         <legend className="sr-only">Payment method</legend>
         <label className={optionClass(method === 'razorpay')}>
@@ -291,6 +314,7 @@ export function PaymentSection({ address, email, items, total }: PaymentSectionP
           </label>
         ) : null}
       </fieldset>
+      )}
 
       {error ? (
         <p role="alert" className="border border-persimmon/40 bg-persimmon/5 p-4 font-sans text-sm text-persimmon">
@@ -298,7 +322,11 @@ export function PaymentSection({ address, email, items, total }: PaymentSectionP
         </p>
       ) : null}
 
-      {method === 'razorpay' ? (
+      {fullyCoveredByCredit ? (
+        <Button variant="primary" size="lg" width="full" loading={processing} onClick={payOnline}>
+          Place Order (Free)
+        </Button>
+      ) : method === 'razorpay' ? (
         <Button variant="primary" size="lg" width="full" loading={processing} onClick={payOnline}>
           Pay {formatPrice(total)}
         </Button>

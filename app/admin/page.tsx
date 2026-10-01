@@ -1,6 +1,8 @@
 /**
  * /admin — dashboard with order totals. Reads Firestore on every request.
  */
+import SyncProductsCard from '@/components/admin/SyncProductsCard';
+import { getNotifications } from '@/lib/admin-notifications';
 import { listOrders } from '@/lib/orders';
 import type { Order } from '@/lib/types';
 import { formatPrice } from '@/lib/utils';
@@ -58,6 +60,14 @@ export default async function AdminDashboardPage() {
     loadError = 'Could not load orders from the database. Check the Firebase Admin settings in your environment variables.';
   }
 
+  /** Unresolved notifications; null if they could not be loaded. */
+  let openNotifications: number | null = null;
+  try {
+    openNotifications = (await getNotifications(true)).length;
+  } catch (error) {
+    console.error('[admin] Failed to load notifications for dashboard:', error);
+  }
+
   const today = istDate(new Date());
   const todaysOrders = orders.filter((order) => istDate(order.createdAt) === today);
   const revenue = orders.filter(countsAsRevenue).reduce((sum, order) => sum + (order.total || 0), 0);
@@ -88,7 +98,52 @@ export default async function AdminDashboardPage() {
             <p style={cardHint}>{stat.hint}</p>
           </div>
         ))}
+
+        <a
+          href="/admin/notifications"
+          style={{
+            ...card,
+            display: 'block',
+            textDecoration: 'none',
+            color: 'inherit',
+            borderColor: openNotifications ? '#C0392B' : '#e5e5e5',
+          }}
+        >
+          <p style={{ ...cardLabel, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span aria-hidden="true">🔔</span> Notifications
+            {openNotifications ? (
+              <span
+                aria-label={`${openNotifications} unresolved`}
+                style={{
+                  background: '#C0392B',
+                  color: '#fff',
+                  borderRadius: '999px',
+                  padding: '1px 8px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  letterSpacing: 0,
+                }}
+              >
+                {openNotifications}
+              </span>
+            ) : null}
+          </p>
+          {openNotifications === null ? (
+            <p style={{ ...cardValue, fontSize: '18px', color: '#6F6A62' }}>Unavailable</p>
+          ) : openNotifications === 0 ? (
+            <p style={{ ...cardValue, fontSize: '24px', color: '#6F6A62' }}>All clear</p>
+          ) : (
+            <p style={{ ...cardValue, color: '#C0392B' }}>{openNotifications}</p>
+          )}
+          <p style={cardHint}>
+            {openNotifications
+              ? `${openNotifications} unresolved issue${openNotifications === 1 ? '' : 's'} →`
+              : 'View notifications →'}
+          </p>
+        </a>
       </div>
+
+      <SyncProductsCard />
 
       <div style={{ display: 'flex', gap: '12px', marginTop: '32px', flexWrap: 'wrap' }}>
         <a href="/admin/orders" style={linkButton}>

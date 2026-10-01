@@ -6,13 +6,22 @@ import { ProductAccordion } from '@/components/product/ProductAccordion';
 import { ProductGrid } from '@/components/product/ProductGrid';
 import { ProductImages } from '@/components/product/ProductImages';
 import { SizeChartTable } from '@/components/product/SizeChartTable';
-import { getBestSellerIds, getCatalog, getCatalogProductBySlug, getRelatedProducts } from '@/lib/catalog';
+import { ViewTracker } from '@/components/product/ViewTracker';
+import { swatchClass } from '@/components/product/ColourSwatch';
+import {
+  buildColourVariantMap,
+  getBestSellerIds,
+  getCatalog,
+  getCatalogProductBySlug,
+  getCatalogProductsByDesignId,
+  getRelatedProducts,
+} from '@/lib/catalog';
 import { getFreeShippingThreshold } from '@/lib/settings';
 import type { Product } from '@/lib/types';
-import { formatPrice, SITE_URL, titleCase, toJsonLd } from '@/lib/utils';
+import { cn, formatPrice, SITE_URL, titleCase, toJsonLd } from '@/lib/utils';
 
 // Rebuild each product page at most once a minute; new products are built on first visit.
-export const revalidate = 60;
+export const revalidate = 10800;
 
 interface ProductPageProps {
   params: { slug: string };
@@ -76,6 +85,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const freeShippingLabel = formatPrice(await getFreeShippingThreshold());
   const related = getRelatedProducts(product, products, 4);
   const bestSellerIds = isMock ? getBestSellerIds() : [];
+  const colourVariantMap = buildColourVariantMap(products);
+  const colourSiblings = product.designId ? await getCatalogProductsByDesignId(product.designId) : [product];
 
   const details = [
     { label: 'Fabric', value: product.style },
@@ -91,6 +102,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toJsonLd(productJsonLd(product)) }} />
+      <ViewTracker slug={product.slug} />
 
       <div className="container-page py-6 md:py-12">
         <nav aria-label="Breadcrumb" className="mb-6 font-sans text-xs text-slateGrey">
@@ -137,6 +149,33 @@ export default async function ProductPage({ params }: ProductPageProps) {
               ) : null}
             </p>
             <p className="mt-1 font-sans text-xs text-slateGrey">Inclusive of all taxes</p>
+
+            {colourSiblings.length > 1 ? (
+              <div className="mt-5">
+                <p className="font-sans text-[11px] uppercase tracking-[0.14em] text-slateGrey">
+                  Colour — <span className="text-ink">{titleCase(product.colour)}</span>
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {colourSiblings.map((sibling) => (
+                    <Link
+                      key={sibling.slug}
+                      href={`/product/${sibling.slug}`}
+                      aria-label={titleCase(sibling.colour)}
+                      aria-current={sibling.slug === product.slug ? 'true' : undefined}
+                      title={titleCase(sibling.colour)}
+                      className={cn(
+                        'flex h-8 w-8 items-center justify-center rounded-full border-2 transition-colors',
+                        sibling.slug === product.slug ? 'border-ink' : 'border-transparent hover:border-pebble',
+                      )}
+                    >
+                      <span
+                        className={cn('h-5 w-5 rounded-full border border-pebble/40', swatchClass(sibling.colour))}
+                      />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {details.length > 0 ? (
               <dl className="mb-8 mt-6 flex flex-wrap gap-x-6 gap-y-2 border-y border-sand py-4 font-sans text-xs">
@@ -232,7 +271,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 View all
               </Link>
             </div>
-            <ProductGrid products={related} className="md:grid-cols-4 lg:grid-cols-4" bestSellerIds={bestSellerIds} />
+            <ProductGrid products={related} className="md:grid-cols-4 lg:grid-cols-4" bestSellerIds={bestSellerIds}
+              colourVariantMap={colourVariantMap}
+            />
           </section>
         ) : null}
 

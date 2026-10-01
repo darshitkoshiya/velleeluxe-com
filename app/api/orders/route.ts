@@ -6,6 +6,7 @@
  *
  * - COD orders: saved as "confirmed" and emails are sent straight away.
  * - Online orders: saved as "pending"; emails are sent once payment is verified.
+ * - Orders fully paid by store credit (`storeCreditToApply`): saved as "confirmed", emails sent now.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
@@ -59,7 +60,8 @@ export async function POST(request: NextRequest) {
     const order = await buildOrder(parsed.data, customerId);
     await saveNewOrder(order);
 
-    if (order.paymentMethod === 'cod') {
+    // COD orders and orders fully paid by store credit are confirmed now, so email straight away.
+    if (order.paymentMethod === 'cod' || order.status === 'confirmed') {
       await notifyOrderPlaced(order);
     }
 

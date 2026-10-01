@@ -4,17 +4,86 @@
  */
 import { unstable_cache } from 'next/cache';
 import { getAdminDb } from './firebase-admin';
-import { FREE_SHIPPING_THRESHOLD } from './utils';
+import { FREE_SHIPPING_THRESHOLD, SHIPPING_FEE } from './utils';
 
 export interface StoreSettings {
   /** When false, Cash on Delivery is hidden at checkout and rejected by the orders API. */
   codEnabled: boolean;
   /** Orders at or above this subtotal (INR) ship free. */
   freeShippingThreshold: number;
+  /** Flat delivery charge (INR) for orders below the free-shipping threshold. */
+  shippingFee: number;
   /** Return window in days for each product category. The "default" key applies to all products. */
   returnWindowByCategory: Record<string, number>;
   /** Social media profile URLs shown in the footer. Empty string = hidden. */
   socialLinks: SocialLinks;
+  /**
+   * What a supplier product's stock becomes when no stock can be found for it
+   * (no stock column detected and no matching inventory row).
+   * 'sold_out' = stock 0 (safe default), 'unlimited' = purchasable.
+   */
+  stockNotFoundBehaviour: StockNotFoundBehaviour;
+  /** Items in the homepage "brand promise" strip (icon + title + description). */
+  brandPromise: BrandPromiseItem[];
+}
+
+export type BrandPromiseIcon =
+  | 'truck'
+  | 'return'
+  | 'chat'
+  | 'shield'
+  | 'star'
+  | 'heart'
+  | 'clock'
+  | 'check'
+  | 'gift'
+  | 'lock'
+  | 'tag'
+  | 'bolt';
+
+export interface BrandPromiseItem {
+  icon: BrandPromiseIcon;
+  title: string;
+  description: string;
+}
+
+export const BRAND_PROMISE_ICONS: BrandPromiseIcon[] = [
+  'truck', 'return', 'chat', 'shield', 'star', 'heart', 'clock', 'check', 'gift', 'lock', 'tag', 'bolt',
+];
+
+export const MAX_BRAND_PROMISE_TITLE_LENGTH = 60;
+export const MAX_BRAND_PROMISE_DESCRIPTION_LENGTH = 200;
+export const MAX_BRAND_PROMISE_ITEMS = 6;
+export const MIN_BRAND_PROMISE_ITEMS = 1;
+
+export const DEFAULT_BRAND_PROMISE: BrandPromiseItem[] = [
+  { icon: 'truck', title: 'Free Shipping', description: 'On all orders over ₹999, delivered across India.' },
+  { icon: 'return', title: '7-Day Returns', description: 'Not the right fit? Return or exchange within seven days.' },
+  { icon: 'chat', title: 'WhatsApp Support', description: 'Real people, quick answers on sizing, orders and more.' },
+];
+
+/** True for 1..MAX_BRAND_PROMISE_ITEMS items, each with a known icon, a non-empty title and a description within limits. */
+export function isValidBrandPromise(value: unknown): value is BrandPromiseItem[] {
+  if (!Array.isArray(value)) return false;
+  if (value.length < MIN_BRAND_PROMISE_ITEMS || value.length > MAX_BRAND_PROMISE_ITEMS) return false;
+  return value.every((raw) => {
+    if (typeof raw !== 'object' || raw === null) return false;
+    const item = raw as Record<string, unknown>;
+    return (
+      BRAND_PROMISE_ICONS.includes(item.icon as BrandPromiseIcon) &&
+      typeof item.title === 'string' &&
+      item.title.trim().length > 0 &&
+      item.title.length <= MAX_BRAND_PROMISE_TITLE_LENGTH &&
+      typeof item.description === 'string' &&
+      item.description.length <= MAX_BRAND_PROMISE_DESCRIPTION_LENGTH
+    );
+  });
+}
+
+export type StockNotFoundBehaviour = 'sold_out' | 'unlimited';
+
+export function isValidStockNotFoundBehaviour(value: unknown): value is StockNotFoundBehaviour {
+  return value === 'sold_out' || value === 'unlimited';
 }
 
 export interface SocialLinks {
@@ -82,8 +151,11 @@ export const MAX_RETURN_WINDOW_DAYS = 90;
 export const DEFAULT_SETTINGS: StoreSettings = {
   codEnabled: true,
   freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
+  shippingFee: SHIPPING_FEE,
   returnWindowByCategory: { default: DEFAULT_RETURN_WINDOW_DAYS },
   socialLinks: DEFAULT_SOCIAL_LINKS,
+  stockNotFoundBehaviour: 'sold_out',
+  brandPromise: DEFAULT_BRAND_PROMISE,
 };
 
 /** Highest threshold the admin can set (INR) — guards against typos like 99999999. */
@@ -115,6 +187,14 @@ export function isValidFreeShippingThreshold(value: unknown): value is number {
   );
 }
 
+/** Highest flat shipping fee the admin can set (INR). */
+export const MAX_SHIPPING_FEE = 2000;
+
+/** True for a whole-rupee amount between 0 and MAX_SHIPPING_FEE. */
+export function isValidShippingFee(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MAX_SHIPPING_FEE;
+}
+
 function settingsRef() {
   return getAdminDb().collection('config').doc('settings');
 }
@@ -127,6 +207,7 @@ export async function getStoreSettings(): Promise<StoreSettings> {
     freeShippingThreshold: isValidFreeShippingThreshold(data?.freeShippingThreshold)
       ? data.freeShippingThreshold
       : DEFAULT_SETTINGS.freeShippingThreshold,
+    shippingFee: isValidShippingFee(data?.shippingFee) ? data.shippingFee : DEFAULT_SETTINGS.shippingFee,
     // Merge with the default so the "default" key always exists (older docs lack this field).
     returnWindowByCategory: {
       ...DEFAULT_SETTINGS.returnWindowByCategory,
@@ -134,6 +215,10 @@ export async function getStoreSettings(): Promise<StoreSettings> {
     },
     // Merge with empty defaults so every platform key always exists.
     socialLinks: cleanSocialLinks(data?.socialLinks),
+    stockNotFoundBehaviour: isValidStockNotFoundBehaviour(data?.stockNotFoundBehaviour)
+      ? data.stockNotFoundBehaviour
+      : DEFAULT_SETTINGS.stockNotFoundBehaviour,
+    brandPromise: isValidBrandPromise(data?.brandPromise) ? data.brandPromise : DEFAULT_SETTINGS.brandPromise,
   };
 }
 
@@ -160,5 +245,56 @@ export const getFreeShippingThreshold = unstable_cache(
     }
   },
   ['free-shipping-threshold'],
+  { revalidate: 60, tags: [SETTINGS_CACHE_TAG] },
+);
+
+/**
+ * Flat shipping fee for server-rendered pages (e.g. shipping policy). Cached for 60 seconds
+ * and refreshed when the admin saves; falls back to the default if Firestore is unavailable.
+ */
+export const getShippingFee = unstable_cache(
+  async (): Promise<number> => {
+    try {
+      return (await getStoreSettings()).shippingFee;
+    } catch (error) {
+      console.error('[settings] Could not read shipping fee; using default:', error);
+      return DEFAULT_SETTINGS.shippingFee;
+    }
+  },
+  ['shipping-fee'],
+  { revalidate: 60, tags: [SETTINGS_CACHE_TAG] },
+);
+
+/**
+ * Stock fallback for supplier products (used by lib/sheets.ts). Cached for 60 seconds
+ * and refreshed when the admin saves; falls back to 'sold_out' if Firestore is unavailable.
+ */
+export const getStockNotFoundBehaviour = unstable_cache(
+  async (): Promise<StockNotFoundBehaviour> => {
+    try {
+      return (await getStoreSettings()).stockNotFoundBehaviour;
+    } catch (error) {
+      console.error('[settings] Could not read stock-not-found behaviour; using default:', error);
+      return DEFAULT_SETTINGS.stockNotFoundBehaviour;
+    }
+  },
+  ['stock-not-found-behaviour'],
+  { revalidate: 60, tags: [SETTINGS_CACHE_TAG] },
+);
+
+/**
+ * Homepage brand-promise items. Cached for 60 seconds and refreshed when the admin saves;
+ * falls back to the defaults if Firestore is unavailable.
+ */
+export const getBrandPromise = unstable_cache(
+  async (): Promise<BrandPromiseItem[]> => {
+    try {
+      return (await getStoreSettings()).brandPromise;
+    } catch (error) {
+      console.error('[settings] Could not read brand promise; using default:', error);
+      return DEFAULT_BRAND_PROMISE;
+    }
+  },
+  ['brand-promise'],
   { revalidate: 60, tags: [SETTINGS_CACHE_TAG] },
 );

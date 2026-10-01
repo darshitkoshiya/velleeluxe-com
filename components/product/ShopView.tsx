@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import type { Product } from '@/lib/types';
+import type { ColourVariant, Product } from '@/lib/types';
 import { cn, titleCase } from '@/lib/utils';
 import { CloseIcon, PlusIcon, MinusIcon } from '@/components/ui/Icons';
 import { ProductFilters, type FilterKey, type FilterOptions } from './ProductFilters';
@@ -43,10 +43,12 @@ interface ShopViewProps {
   products: Product[];
   /** Product IDs that get the "Best Seller" badge. */
   bestSellerIds?: string[];
+  /** Product ID → colour variants of its design (only designs with 2+ colours). */
+  colourVariantMap?: Record<string, ColourVariant[]>;
 }
 
 /** Client-side filtering and sorting of the (server-fetched) product list using URL params. */
-export function ShopView({ products, bestSellerIds = [] }: ShopViewProps) {
+export function ShopView({ products, bestSellerIds = [], colourVariantMap }: ShopViewProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -178,6 +180,7 @@ export function ShopView({ products, bestSellerIds = [] }: ShopViewProps) {
         products={visible}
         priorityCount={4}
         bestSellerIds={bestSellerIds}
+        colourVariantMap={colourVariantMap}
         emptyState={
           products.length === 0 ? (
             <div>

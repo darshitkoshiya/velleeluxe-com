@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   const { razorpayOrderId, razorpayPaymentId, razorpaySignature, orderId } = payload;
 
   try {
-    if (!verifyPaymentSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
+    if (!(await verifyPaymentSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature))) {
       return NextResponse.json({ error: 'Payment verification failed.' }, { status: 400 });
     }
 

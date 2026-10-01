@@ -1,8 +1,10 @@
 /**
- * GET  /api/admin/settings — returns { codEnabled, freeShippingThreshold, returnWindowByCategory }
- * POST /api/admin/settings — body { codEnabled?: boolean, freeShippingThreshold?: number,
+ * GET  /api/admin/settings — returns { codEnabled, freeShippingThreshold, shippingFee, returnWindowByCategory, ... }
+ * POST /api/admin/settings — body { codEnabled?: boolean, freeShippingThreshold?: number, shippingFee?: number,
  *                                   returnWindowByCategory?: Record<string, number>,
- *                                   socialLinks?: { instagram, facebook, twitter, youtube, pinterest } }
+ *                                   socialLinks?: { instagram, facebook, twitter, youtube, pinterest },
+ *                                   stockNotFoundBehaviour?: 'sold_out' | 'unlimited',
+ *                                   brandPromise?: { icon, title, description }[] }
  *                            (at least one field; only the fields sent are changed)
  *
  * Protected by HTTP Basic Auth in middleware.ts.
@@ -11,13 +13,20 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   getStoreSettings,
+  isValidBrandPromise,
   isValidFreeShippingThreshold,
   isValidReturnWindowByCategory,
+  isValidShippingFee,
+  isValidStockNotFoundBehaviour,
+  MAX_BRAND_PROMISE_ITEMS,
   MAX_FREE_SHIPPING_THRESHOLD,
   MAX_RETURN_WINDOW_DAYS,
+  MAX_SHIPPING_FEE,
+  MIN_BRAND_PROMISE_ITEMS,
   parseSocialLinks,
   SETTINGS_CACHE_TAG,
   updateStoreSettings,
+  type BrandPromiseItem,
   type StoreSettings,
 } from '@/lib/settings';
 
@@ -27,8 +36,11 @@ function toResponse(settings: StoreSettings) {
   return {
     codEnabled: settings.codEnabled,
     freeShippingThreshold: settings.freeShippingThreshold,
+    shippingFee: settings.shippingFee,
     returnWindowByCategory: settings.returnWindowByCategory,
     socialLinks: settings.socialLinks,
+    stockNotFoundBehaviour: settings.stockNotFoundBehaviour,
+    brandPromise: settings.brandPromise,
   };
 }
 
@@ -53,8 +65,11 @@ export async function POST(request: NextRequest) {
   const input = (body ?? {}) as {
     codEnabled?: unknown;
     freeShippingThreshold?: unknown;
+    shippingFee?: unknown;
     returnWindowByCategory?: unknown;
     socialLinks?: unknown;
+    stockNotFoundBehaviour?: unknown;
+    brandPromise?: unknown;
   };
   const updates: Partial<StoreSettings> = {};
 
@@ -75,6 +90,18 @@ export async function POST(request: NextRequest) {
       );
     }
     updates.freeShippingThreshold = input.freeShippingThreshold;
+  }
+
+  if (input.shippingFee !== undefined) {
+    if (!isValidShippingFee(input.shippingFee)) {
+      return NextResponse.json(
+        {
+          error: `Shipping fee must be a whole number of rupees between 0 and ₹${MAX_SHIPPING_FEE.toLocaleString('en-IN')}.`,
+        },
+        { status: 400 },
+      );
+    }
+    updates.shippingFee = input.shippingFee;
   }
 
   if (input.returnWindowByCategory !== undefined) {
@@ -105,6 +132,30 @@ export async function POST(request: NextRequest) {
     updates.socialLinks = parsed.links;
   }
 
+  if (input.stockNotFoundBehaviour !== undefined) {
+    if (!isValidStockNotFoundBehaviour(input.stockNotFoundBehaviour)) {
+      return NextResponse.json({ error: "stockNotFoundBehaviour must be 'sold_out' or 'unlimited'." }, { status: 400 });
+    }
+    updates.stockNotFoundBehaviour = input.stockNotFoundBehaviour;
+  }
+
+  if (input.brandPromise !== undefined) {
+    if (!isValidBrandPromise(input.brandPromise)) {
+      return NextResponse.json(
+        {
+          error: `Brand promise must be ${MIN_BRAND_PROMISE_ITEMS}–${MAX_BRAND_PROMISE_ITEMS} items, each with a valid icon, title, and description.`,
+        },
+        { status: 400 },
+      );
+    }
+    // Store only the known fields, with surrounding whitespace removed.
+    updates.brandPromise = (input.brandPromise as BrandPromiseItem[]).map((item) => ({
+      icon: item.icon,
+      title: item.title.trim(),
+      description: item.description.trim(),
+    }));
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Nothing to save.' }, { status: 400 });
   }
@@ -113,6 +164,8 @@ export async function POST(request: NextRequest) {
     const settings = await updateStoreSettings(updates);
     // Refresh server-rendered pages that show store settings.
     revalidateTag(SETTINGS_CACHE_TAG);
+    // Product stock depends on stockNotFoundBehaviour — reload products so the change shows now.
+    if (updates.stockNotFoundBehaviour !== undefined) revalidateTag('products');
     return NextResponse.json(toResponse(settings));
   } catch (error) {
     console.error('[api/admin/settings] Failed to save settings:', error);

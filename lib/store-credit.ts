@@ -114,6 +114,31 @@ export async function adjustStoreCredit(uid: string, input: StoreCreditEntryInpu
   });
 }
 
+/**
+ * Debits store credit that was applied to an order. Call only AFTER the order is saved.
+ * Runs in a transaction, so it throws (409) instead of letting the balance go negative.
+ */
+export async function deductStoreCredit(
+  uid: string,
+  amount: number,
+  orderId: string,
+): Promise<{ entry: StoreCreditTransaction; balance: number }> {
+  return adjustStoreCredit(uid, {
+    type: 'debit',
+    amount,
+    reason: `Applied to Order ${orderId}`,
+    orderId,
+    createdBy: 'system',
+  });
+}
+
+/** Current balance only (0 when the customer has no ledger yet). */
+export async function getStoreCreditBalance(uid: string): Promise<number> {
+  const snapshot = await storeCreditRef(uid).get();
+  const balance = snapshot.exists ? (snapshot.data() as Partial<StoreCredit>).balance : 0;
+  return typeof balance === 'number' && Number.isFinite(balance) && balance > 0 ? balance : 0;
+}
+
 export async function getStoreCredit(uid: string): Promise<StoreCredit> {
   const snapshot = await storeCreditRef(uid).get();
   const data = snapshot.exists ? (snapshot.data() as Partial<StoreCredit>) : undefined;
