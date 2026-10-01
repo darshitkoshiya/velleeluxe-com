@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/hooks/useCart';
 import { BagIcon, HeartIcon, MenuIcon, UserIcon } from '@/components/ui/Icons';
 import { cn } from '@/lib/utils';
+import { useLoginPrompt } from '@/lib/login-prompt-store';
 import MobileMenu from './MobileMenu';
 import { buildNavEntries, isActivePath, isNavGroup, type NavGroup, type NavItem, type ShopFilterLinks } from './navigation';
 
@@ -123,6 +124,7 @@ export default function Header({ fabricLinks = NO_LINKS, patternLinks = NO_LINKS
   const navEntries = useMemo(() => buildNavEntries({ fabricLinks, patternLinks }), [fabricLinks, patternLinks]);
   const { totalItems, hydrated, openDrawer } = useCart();
   const { user } = useAuth();
+  const openLoginPrompt = useLoginPrompt((s) => s.open);
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
 
@@ -163,9 +165,15 @@ export default function Header({ fabricLinks = NO_LINKS, patternLinks = NO_LINKS
           </nav>
 
           <div className="-mr-2 flex flex-1 items-center justify-end gap-1">
-            <Link href="/account/wishlist" className={iconButton} aria-label="Wishlist">
-              <HeartIcon width={22} height={22} />
-            </Link>
+            {user ? (
+              <Link href="/account/wishlist" className={iconButton} aria-label="Wishlist">
+                <HeartIcon width={22} height={22} />
+              </Link>
+            ) : (
+              <button type="button" onClick={openLoginPrompt} className={iconButton} aria-label="Wishlist">
+                <HeartIcon width={22} height={22} />
+              </button>
+            )}
             <CartButton count={count} onClick={openDrawer} />
             <Link href={accountHref} className={iconButton} aria-label={user ? 'Your account' : 'Sign in'}>
               <UserIcon width={22} height={22} />

@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { useLoginPrompt } from '@/lib/login-prompt-store';
 import { useWishlist } from '@/lib/wishlist-store';
 import { HeartIcon } from '@/components/ui/Icons';
 import type { Product } from '@/lib/types';
@@ -17,14 +17,14 @@ interface WishlistButtonProps {
 export function WishlistButton({ product, className, withLabel = false }: WishlistButtonProps) {
   const { user } = useAuth();
   const { isWishlisted, toggleItem } = useWishlist();
-  const router = useRouter();
+  const openLoginPrompt = useLoginPrompt((s) => s.open);
   const active = isWishlisted(product.id);
 
   const handleClick = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     if (!user) {
-      router.push(`/account/login?redirect=/account/wishlist`);
+      openLoginPrompt();
       return;
     }
     toggleItem(product);

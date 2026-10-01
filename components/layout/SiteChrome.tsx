@@ -6,6 +6,7 @@ import Header from './Header';
 import Footer from './Footer';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import WhatsAppButton from '@/components/ui/WhatsAppButton';
+import { LoginPromptModal } from '@/components/ui/LoginPromptModal';
 
 export default function SiteChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? '';
@@ -28,6 +29,7 @@ export default function SiteChrome({ children }: { children: ReactNode }) {
       <Footer />
       <WhatsAppButton />
       <CartDrawer />
+      <LoginPromptModal />
     </div>
   );
 }

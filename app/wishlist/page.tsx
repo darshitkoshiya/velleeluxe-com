@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { useLoginPrompt } from '@/lib/login-prompt-store';
 import { useWishlist } from '@/lib/wishlist-store';
 import { ProductCard } from '@/components/product/ProductCard';
 import { buttonClasses } from '@/components/ui/Button';
@@ -12,14 +12,14 @@ import { PageLoader } from '@/components/ui/LoadingSpinner';
 
 export default function WishlistPage() {
   const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
+  const openLoginPrompt = useLoginPrompt((s) => s.open);
   const { items, removeItem, clearWishlist, loading } = useWishlist();
 
   useEffect(() => {
-    if (!authLoading && !user) router.replace('/account/login?redirect=/account/wishlist');
-  }, [authLoading, user, router]);
+    if (!authLoading && !user) openLoginPrompt();
+  }, [authLoading, user, openLoginPrompt]);
 
-  if (authLoading || !user) return <PageLoader label="Loading wishlist" />;
+  if (authLoading) return <PageLoader label="Loading wishlist" />;
 
   return (
     <div className="bg-linen">
