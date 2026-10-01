@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ContactForm } from '@/components/contact/ContactForm';
-import { FREE_SHIPPING_THRESHOLD } from '@/lib/utils';
+import { getFreeShippingThreshold } from '@/lib/settings';
+
+// Re-render at most once a minute so the free-shipping amount follows the admin setting.
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: 'Contact',
@@ -12,10 +15,10 @@ export const metadata: Metadata = {
 
 const CONTACT_EMAIL = 'hello@velleeluxe.com';
 
-const faqs = [
+const getFaqs = (freeShippingThreshold: number) => [
   {
     question: 'How long does shipping take?',
-    answer: `Orders are dispatched within 1–2 working days and usually arrive in 3–7 working days, depending on your pincode. Shipping is free on orders over ₹${FREE_SHIPPING_THRESHOLD.toLocaleString('en-IN')}.`,
+    answer: `Orders are dispatched within 1–2 working days and usually arrive in 3–7 working days, depending on your pincode. Shipping is free on orders over ₹${freeShippingThreshold.toLocaleString('en-IN')}.`,
   },
   {
     question: 'What is your return policy?',
@@ -47,7 +50,8 @@ function WhatsAppGlyph() {
   );
 }
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const faqs = getFaqs(await getFreeShippingThreshold());
   const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER;
   const whatsappHref = whatsappNumber
     ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hi Vellee Luxe, I have a question.')}`

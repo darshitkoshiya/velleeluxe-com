@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/hooks/useCart';
+import { useFreeShippingThreshold } from '@/hooks/useFreeShippingThreshold';
 import { AddressForm, type AddressFormValues } from '@/components/checkout/AddressForm';
 import { PaymentSection } from '@/components/checkout/PaymentSection';
 import { buttonClasses } from '@/components/ui/Button';
@@ -16,6 +17,7 @@ export default function CheckoutPage() {
   const { user, loading: authLoading, isConfigured } = useAuth();
   const [guestChosen, setGuestChosen] = useState(false);
   const [details, setDetails] = useState<AddressFormValues | null>(null);
+  const freeShippingThreshold = useFreeShippingThreshold();
 
   if (!hydrated || authLoading) return <PageLoader label="Loading checkout" />;
 
@@ -31,7 +33,8 @@ export default function CheckoutPage() {
     );
   }
 
-  const shipping = calculateShipping(subtotal);
+  // Display only — the server recalculates shipping with the same admin setting when the order is placed.
+  const shipping = calculateShipping(subtotal, freeShippingThreshold);
   const total = subtotal + shipping;
   const showSignInChoice = isConfigured && !user && !guestChosen;
 

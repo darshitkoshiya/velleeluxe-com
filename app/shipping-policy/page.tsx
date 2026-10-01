@@ -1,15 +1,24 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalPage, LegalSection } from '@/components/layout/LegalPage';
-import { SUPPORT_EMAIL } from '@/lib/utils';
+import { getFreeShippingThreshold } from '@/lib/settings';
+import { formatPrice, SHIPPING_FEE, SUPPORT_EMAIL } from '@/lib/utils';
 
-export const metadata: Metadata = {
-  title: 'Shipping Policy',
-  description: 'Vellee Luxe ships across India in 5–7 business days. Free shipping on orders above ₹1,499.',
-  alternates: { canonical: '/shipping-policy' },
-};
+// Re-render at most once a minute so the free-shipping amount follows the admin setting.
+export const revalidate = 60;
 
-export default function ShippingPolicyPage() {
+export async function generateMetadata(): Promise<Metadata> {
+  const threshold = formatPrice(await getFreeShippingThreshold());
+  return {
+    title: 'Shipping Policy',
+    description: `Vellee Luxe ships across India in 5–7 business days. Free shipping on orders above ${threshold}.`,
+    alternates: { canonical: '/shipping-policy' },
+  };
+}
+
+export default async function ShippingPolicyPage() {
+  const threshold = formatPrice(await getFreeShippingThreshold());
+
   return (
     <LegalPage
       title="Shipping Policy"
@@ -31,9 +40,9 @@ export default function ShippingPolicyPage() {
       <LegalSection title="Shipping charges">
         <ul>
           <li>
-            <strong>Free shipping</strong> on all orders of ₹1,499 and above.
+            <strong>Free shipping</strong> on all orders of {threshold} and above.
           </li>
-          <li>A flat delivery charge of ₹99 applies to orders below ₹1,499.</li>
+          <li>A flat delivery charge of {formatPrice(SHIPPING_FEE)} applies to orders below {threshold}.</li>
         </ul>
         <p>The exact charge is shown at checkout before you pay. All prices include applicable taxes.</p>
       </LegalSection>

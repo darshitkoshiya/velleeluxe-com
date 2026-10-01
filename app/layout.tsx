@@ -5,7 +5,8 @@ import type { ReactNode } from 'react';
 import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
 import SiteChrome from '@/components/layout/SiteChrome';
-import { FREE_SHIPPING_THRESHOLD, SITE_URL, formatPrice } from '@/lib/utils';
+import { getFreeShippingThreshold } from '@/lib/settings';
+import { SITE_URL, formatPrice } from '@/lib/utils';
 import './globals.css';
 
 const dmSans = DM_Sans({
@@ -25,8 +26,10 @@ const newsreader = Newsreader({
 
 const DEFAULT_TITLE = "Vellee Luxe — Premium Men's Shirts";
 
-// Threshold comes from lib/utils so the copy always matches what checkout charges.
-const DESCRIPTION = `Discover premium men's shirts crafted for modern India. Shop linen, cotton, and Oxford weave shirts with free shipping over ${formatPrice(FREE_SHIPPING_THRESHOLD)}.`;
+// Threshold comes from the admin setting (lib/settings) so the copy always matches what checkout charges.
+function buildDescription(freeShippingThreshold: number): string {
+  return `Discover premium men's shirts crafted for modern India. Shop linen, cotton, and Oxford weave shirts with free shipping over ${formatPrice(freeShippingThreshold)}.`;
+}
 
 // Placeholder until a real 1200x630 image is added at public/og-image.jpg.
 const OG_IMAGE = {
@@ -36,40 +39,44 @@ const OG_IMAGE = {
   alt: "Vellee Luxe — Premium Men's Shirts",
 };
 
-export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
-  title: {
-    template: '%s | Vellee Luxe',
-    default: DEFAULT_TITLE,
-  },
-  description: DESCRIPTION,
-  applicationName: 'Vellee Luxe',
-  keywords: [
-    "men's shirts",
-    'premium shirts India',
-    'linen shirts for men',
-    'cotton shirts for men',
-    'Oxford shirts',
-    'luxury menswear India',
-    'buy shirts online India',
-    'Vellee Luxe',
-  ],
-  openGraph: {
-    siteName: 'Vellee Luxe',
-    locale: 'en_IN',
-    type: 'website',
-    url: SITE_URL,
-    title: DEFAULT_TITLE,
-    description: DESCRIPTION,
-    images: [OG_IMAGE],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: DEFAULT_TITLE,
-    description: DESCRIPTION,
-    images: [OG_IMAGE.url],
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const description = buildDescription(await getFreeShippingThreshold());
+
+  return {
+    metadataBase: new URL(SITE_URL),
+    title: {
+      template: '%s | Vellee Luxe',
+      default: DEFAULT_TITLE,
+    },
+    description,
+    applicationName: 'Vellee Luxe',
+    keywords: [
+      "men's shirts",
+      'premium shirts India',
+      'linen shirts for men',
+      'cotton shirts for men',
+      'Oxford shirts',
+      'luxury menswear India',
+      'buy shirts online India',
+      'Vellee Luxe',
+    ],
+    openGraph: {
+      siteName: 'Vellee Luxe',
+      locale: 'en_IN',
+      type: 'website',
+      url: SITE_URL,
+      title: DEFAULT_TITLE,
+      description,
+      images: [OG_IMAGE],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: DEFAULT_TITLE,
+      description,
+      images: [OG_IMAGE.url],
+    },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: '#F6F1E8',

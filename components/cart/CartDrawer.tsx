@@ -4,16 +4,19 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { useCart } from '@/hooks/useCart';
+import { useFreeShippingThreshold } from '@/hooks/useFreeShippingThreshold';
 import { useOverlay } from '@/hooks/useOverlay';
 import { Button, buttonClasses } from '@/components/ui/Button';
 import { CloseIcon } from '@/components/ui/Icons';
-import { formatPrice, FREE_SHIPPING_THRESHOLD } from '@/lib/utils';
+import { formatPrice } from '@/lib/utils';
 import { CartItem } from './CartItem';
 
 export function CartDrawer() {
   const { items, subtotal, totalItems, isDrawerOpen, closeDrawer } = useCart();
   const panelRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+
+  const freeShippingThreshold = useFreeShippingThreshold();
 
   useOverlay(isDrawerOpen, closeDrawer, panelRef);
 
@@ -24,7 +27,9 @@ export function CartDrawer() {
 
   if (!isDrawerOpen) return null;
 
-  const remainingForFreeShipping = FREE_SHIPPING_THRESHOLD - subtotal;
+  const remainingForFreeShipping = freeShippingThreshold - subtotal;
+  const freeShippingProgress =
+    freeShippingThreshold > 0 ? Math.min(100, (subtotal / freeShippingThreshold) * 100) : 100;
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title">
@@ -72,7 +77,7 @@ export function CartDrawer() {
               <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-sand" aria-hidden="true">
                 <div
                   className="h-full rounded-full bg-persimmon transition-all duration-500 ease-out"
-                  style={{ width: `${Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)}%` }}
+                  style={{ width: `${freeShippingProgress}%` }}
                 />
               </div>
             </div>

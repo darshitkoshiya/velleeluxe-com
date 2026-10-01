@@ -2,8 +2,12 @@
  * Small helper functions used across the site.
  */
 
-/** Orders at or above this subtotal (INR) ship free. */
-export const FREE_SHIPPING_THRESHOLD = 1499;
+/**
+ * Default free-shipping threshold (INR). The live value is set by the admin at
+ * /admin/settings (Firestore config/settings.freeShippingThreshold); this is only
+ * the fallback used before the setting loads or if it has never been saved.
+ */
+export const FREE_SHIPPING_THRESHOLD = 999;
 
 /** Flat delivery charge (INR) for orders below the free-shipping threshold. */
 export const SHIPPING_FEE = 99;
@@ -24,8 +28,8 @@ export function formatPrice(amount: number): string {
   }).format(amount);
 }
 
-export function calculateShipping(subtotal: number): number {
-  if (subtotal <= 0 || subtotal >= FREE_SHIPPING_THRESHOLD) return 0;
+export function calculateShipping(subtotal: number, freeShippingThreshold: number = FREE_SHIPPING_THRESHOLD): number {
+  if (subtotal <= 0 || subtotal >= freeShippingThreshold) return 0;
   return SHIPPING_FEE;
 }
 

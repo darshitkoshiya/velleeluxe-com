@@ -7,6 +7,7 @@ import { ProductGrid } from '@/components/product/ProductGrid';
 import { ProductImages } from '@/components/product/ProductImages';
 import { SizeChartTable } from '@/components/product/SizeChartTable';
 import { getBestSellerIds, getCatalog, getCatalogProductBySlug, getRelatedProducts } from '@/lib/catalog';
+import { getFreeShippingThreshold } from '@/lib/settings';
 import type { Product } from '@/lib/types';
 import { formatPrice, SITE_URL, titleCase, toJsonLd } from '@/lib/utils';
 
@@ -72,6 +73,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
   if (!product) notFound();
 
   const { products, isMock } = await getCatalog();
+  const freeShippingLabel = formatPrice(await getFreeShippingThreshold());
   const related = getRelatedProducts(product, products, 4);
   const bestSellerIds = isMock ? getBestSellerIds() : [];
 
@@ -152,7 +154,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
             <AddToCart product={product} />
 
             <ul className="mt-8 grid grid-cols-1 gap-2 font-sans text-xs text-slateGrey sm:grid-cols-3 sm:gap-4">
-              <li className="border-l-2 border-sand pl-3">Free shipping above ₹1,499</li>
+              <li className="border-l-2 border-sand pl-3">Free shipping above {freeShippingLabel}</li>
               <li className="border-l-2 border-sand pl-3">Delivered in 5–7 days</li>
               <li className="border-l-2 border-sand pl-3">
                 7-day{' '}
@@ -203,7 +205,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
               <ProductAccordion title="Shipping & Returns">
                 <ul className="space-y-2 font-serif text-base leading-relaxed text-slateGrey">
-                  <li>Free shipping on orders above ₹1,499. A flat fee applies below that.</li>
+                  <li>Free shipping on orders above {freeShippingLabel}. A flat fee applies below that.</li>
                   <li>Dispatched within 1–2 business days, delivered in 5–7 business days across India.</li>
                   <li>
                     Easy 7-day returns on unworn items with tags attached.{' '}

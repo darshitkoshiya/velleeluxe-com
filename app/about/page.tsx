@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { buttonClasses } from '@/components/ui/Button';
-import { FREE_SHIPPING_THRESHOLD } from '@/lib/utils';
+import { getFreeShippingThreshold } from '@/lib/settings';
+
+// Re-render at most once a minute so the free-shipping amount follows the admin setting.
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: 'About',
@@ -11,10 +14,10 @@ export const metadata: Metadata = {
   alternates: { canonical: '/about' },
 };
 
-const promises = [
+const getPromises = (freeShippingThreshold: number) => [
   {
     title: 'Free shipping',
-    body: `On every order over ₹${FREE_SHIPPING_THRESHOLD.toLocaleString('en-IN')}, delivered anywhere in India.`,
+    body: `On every order over ₹${freeShippingThreshold.toLocaleString('en-IN')}, delivered anywhere in India.`,
   },
   {
     title: 'Easy 7-day returns',
@@ -57,7 +60,9 @@ function SectionLabel({ children }: { children: ReactNode }) {
   return <p className="label-caps text-oxford">{children}</p>;
 }
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const promises = getPromises(await getFreeShippingThreshold());
+
   return (
     <div className="bg-linen">
       {/* Hero */}

@@ -218,11 +218,11 @@ function ChatIcon() {
   );
 }
 
-function BrandPromise() {
+function BrandPromise({ freeShippingThreshold }: { freeShippingThreshold: number }) {
   const promises = [
     {
       title: 'Free Shipping',
-      body: `On all orders over ${formatPrice(FREE_SHIPPING_THRESHOLD)}, delivered across India.`,
+      body: `On all orders over ${formatPrice(freeShippingThreshold)}, delivered across India.`,
       icon: <TruckIcon />,
     },
     { title: '7-Day Returns', body: 'Not the right fit? Return or exchange within seven days.', icon: <ReturnIcon /> },
@@ -338,13 +338,20 @@ function FinalCta() {
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
-export default function HomeView({ featuredProducts }: { featuredProducts: Product[] }) {
+export default function HomeView({
+  featuredProducts,
+  freeShippingThreshold = FREE_SHIPPING_THRESHOLD,
+}: {
+  featuredProducts: Product[];
+  /** Admin-set threshold (INR) from lib/settings; defaults to the lib/utils fallback. */
+  freeShippingThreshold?: number;
+}) {
   return (
     <>
       <Hero />
       <FabricStory />
       <FeaturedProducts products={featuredProducts} />
-      <BrandPromise />
+      <BrandPromise freeShippingThreshold={freeShippingThreshold} />
       <CraftStory />
       <FinalCta />
     </>

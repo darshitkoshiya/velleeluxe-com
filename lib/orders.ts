@@ -9,6 +9,7 @@
 import { getAdminDb } from './firebase-admin';
 import { appendOrder, getProducts, updateOrderInSheet } from './sheets';
 import { sendOrderConfirmation, sendOrderNotification } from './resend';
+import { DEFAULT_SETTINGS, getStoreSettings } from './settings';
 import type {
   Address,
   CreateOrderRequest,
@@ -165,7 +166,14 @@ export async function buildOrder(request: CreateOrderRequest, customerId: string
   }
 
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shippingFee = calculateShipping(subtotal);
+  // Free-shipping threshold comes from the admin panel (falls back to the default if unreadable).
+  let freeShippingThreshold = DEFAULT_SETTINGS.freeShippingThreshold;
+  try {
+    freeShippingThreshold = (await getStoreSettings()).freeShippingThreshold;
+  } catch (error) {
+    console.error('[orders] Could not read store settings; using default free-shipping threshold:', error);
+  }
+  const shippingFee = calculateShipping(subtotal, freeShippingThreshold);
   const now = new Date().toISOString();
 
   return {

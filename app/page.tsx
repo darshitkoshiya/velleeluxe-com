@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import HomeView from '@/components/home/HomeView';
 import { getCatalog } from '@/lib/catalog';
+import { getFreeShippingThreshold } from '@/lib/settings';
 import { SITE_URL, SUPPORT_EMAIL, toJsonLd } from '@/lib/utils';
 
 // Server wrapper: fetches products + provides metadata/JSON-LD.
@@ -29,13 +30,13 @@ const websiteJsonLd = {
 };
 
 export default async function HomePage() {
-  const { products } = await getCatalog();
+  const [{ products }, freeShippingThreshold] = await Promise.all([getCatalog(), getFreeShippingThreshold()]);
 
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toJsonLd(organizationJsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toJsonLd(websiteJsonLd) }} />
-      <HomeView featuredProducts={products.slice(0, 4)} />
+      <HomeView featuredProducts={products.slice(0, 4)} freeShippingThreshold={freeShippingThreshold} />
     </>
   );
 }
