@@ -74,14 +74,35 @@ export default function ReturnPolicyPage() {
       </LegalSection>
 
       <LegalSection title="Exchanges">
+        <ol>
+          <li>
+            <strong>Check availability first.</strong> Message us on {whatsappLink} with your order number, the item you
+            want to exchange and the size you need. We will confirm whether that size is in stock before proceeding.
+          </li>
+          <li>
+            <strong>If your size is available</strong>, we arrange a free pickup of the original item. Once it reaches us
+            and passes inspection, we dispatch the replacement.
+          </li>
+          <li>
+            <strong>If your size is not available</strong>, we issue store credit for the value of the returned item.
+            Store credit is issued after we receive and inspect the original item, and can be used on any future order.
+          </li>
+        </ol>
         <p>
-          Need a different size? Follow the same steps above and tell us the size you would like. Size exchanges are free,
-          subject to availability. Once we receive the original item, we ship your replacement right away. If the size
-          you need is unavailable, we will issue a full refund instead.
+          Full cash refunds are issued only in cases where the item arrived damaged, defective or was not what you
+          ordered — not for size exchanges or change of mind.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Store credit">
+        <p>
+          Store credit is issued to your Vellee Luxe account after the returned item is received and inspected. It has
+          no expiry and can be applied to any order on velleeluxe.com.
         </p>
       </LegalSection>
 
       <LegalSection title="Refund timeline">
+        <p>Full refunds (damaged, defective or wrong items only) are processed as follows:</p>
         <ul>
           <li>
             <strong>Online payments:</strong> refunded to your original payment method within 5–7 business days of the
