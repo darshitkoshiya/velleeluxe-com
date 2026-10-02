@@ -81,13 +81,10 @@ export function middleware(request: NextRequest) {
   const isAdminPath = isAdminPage || isAdminApi;
   const isLocalDev = process.env.NODE_ENV === 'development' || isLocalHost(host);
 
-  // Main domain trying to reach /admin or /api/admin -> send to the admin subdomain.
+  // Main domain trying to reach /admin or /api/admin -> 404, not a redirect.
+  // A redirect would reveal the admin subdomain to anyone probing the main domain.
   if (!isAdminSubdomain && !isLocalDev && isAdminPath) {
-    const url = request.nextUrl.clone();
-    url.protocol = 'https:';
-    url.host = ADMIN_HOST;
-    url.port = '';
-    return NextResponse.redirect(url);
+    return new NextResponse(null, { status: 404 });
   }
 
   // Admin subdomain, or /admin paths during local development -> require auth.
