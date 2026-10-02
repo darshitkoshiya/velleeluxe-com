@@ -22,6 +22,11 @@ export const MANUAL_ID_PREFIX = 'manual-';
 /** Fields of an override that can be set, or cleared by passing null. */
 export type OverrideUpdate = {
   priceOverride?: number | null;
+  compareAtPriceOverride?: number | null;
+  stockOverride?: number | null;
+  supplierPrice?: number | null;
+  markup?: number | null;
+  autoMarkup?: boolean | null;
   titleOverride?: string | null;
   descriptionOverride?: string | null;
   featured?: boolean | null;
@@ -120,6 +125,12 @@ export function mergeOverride(product: Product, override: ProductOverride | unde
     description: override.descriptionOverride?.trim() ? override.descriptionOverride : product.description,
     price:
       typeof override.priceOverride === 'number' && override.priceOverride > 0 ? override.priceOverride : product.price,
+    compareAtPrice:
+      typeof override.compareAtPriceOverride === 'number' && override.compareAtPriceOverride > 0
+        ? override.compareAtPriceOverride
+        : product.compareAtPrice,
+    stock:
+      typeof override.stockOverride === 'number' && override.stockOverride >= 0 ? override.stockOverride : product.stock,
     featured: override.featured === true,
   };
 }

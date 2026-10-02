@@ -2,6 +2,19 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import CustomerDrawer from '@/components/admin/CustomerDrawer';
+import EmptyState from '@/components/admin/ui/EmptyState';
+import {
+  ADMIN_TABLE_CSS,
+  OK,
+  btn,
+  countBadge,
+  fieldInput,
+  formatDate,
+  tableFrame,
+  tableStyle,
+  td,
+  th,
+} from '@/components/admin/ui/admin-styles';
 import type { CustomerSummary } from '@/lib/customers';
 import { formatPrice } from '@/lib/utils';
 
@@ -19,41 +32,7 @@ function relativeTime(iso: string): string {
   return `${years} year${years > 1 ? 's' : ''} ago`;
 }
 
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '12px',
-  fontSize: '12px',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-  color: '#6F6A62',
-  borderBottom: '1px solid #e5e5e5',
-  whiteSpace: 'nowrap',
-};
-const td: React.CSSProperties = { padding: '12px', fontSize: '14px', borderBottom: '1px solid #f0f0f0', verticalAlign: 'top' };
-const secondaryButton: React.CSSProperties = {
-  display: 'inline-block',
-  background: '#fff',
-  color: '#1C2230',
-  border: '1px solid #ccc',
-  borderRadius: '6px',
-  padding: '8px 14px',
-  fontSize: '13px',
-  fontWeight: 500,
-  textDecoration: 'none',
-  whiteSpace: 'nowrap',
-};
-const input: React.CSSProperties = {
-  width: '100%',
-  maxWidth: '420px',
-  padding: '10px 12px',
-  fontSize: '14px',
-  border: '1px solid #ccc',
-  borderRadius: '6px',
-  boxSizing: 'border-box',
-  background: '#fff',
-  fontFamily: 'inherit',
-};
+const subText = { fontSize: '12px', color: 'var(--admin-text-muted)', marginTop: '2px' } as const;
 
 export default function CustomersTable({ customers }: { customers: CustomerSummary[] }) {
   const [query, setQuery] = useState('');
@@ -68,84 +47,112 @@ export default function CustomersTable({ customers }: { customers: CustomerSumma
 
   return (
     <div>
+      <style>{ADMIN_TABLE_CSS}</style>
+
       <input
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search by name or email"
         aria-label="Search customers by name or email"
-        style={{ ...input, marginBottom: '16px' }}
+        style={{ ...fieldInput, width: '280px', maxWidth: '100%', fontSize: '13px', marginBottom: '16px' }}
       />
 
-      <div style={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: '8px', overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
-          <thead>
-            <tr>
-              <th style={th}>Name</th>
-              <th style={th}>Email</th>
-              <th style={{ ...th, textAlign: 'right' }}>Orders</th>
-              <th style={{ ...th, textAlign: 'right' }}>Total Spent</th>
-              <th style={th}>Last Order</th>
-              <th style={th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.length === 0 ? (
+      <div style={tableFrame}>
+        {customers.length === 0 ? (
+          <EmptyState title="No customers yet." description="Customers appear here after they place their first order." />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title="No customers match"
+            description={`Nothing matches “${query.trim()}”.`}
+            action={
+              <button type="button" onClick={() => setQuery('')} style={btn('secondary')}>
+                Clear search
+              </button>
+            }
+          />
+        ) : (
+          <table style={{ ...tableStyle, minWidth: '860px' }}>
+            <thead>
               <tr>
-                <td style={{ ...td, textAlign: 'center', color: '#6F6A62' }} colSpan={6}>
-                  No orders placed yet.
-                </td>
+                <th style={th}>Name</th>
+                <th style={th}>Email</th>
+                <th style={th}>Phone</th>
+                <th style={{ ...th, textAlign: 'right' }}>Orders</th>
+                <th style={{ ...th, textAlign: 'right' }}>Total spent</th>
+                <th style={th}>Joined</th>
+                <th style={{ ...th, textAlign: 'right' }}>Actions</th>
               </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td style={{ ...td, textAlign: 'center', color: '#6F6A62' }} colSpan={6}>
-                  No customers match &ldquo;{query.trim()}&rdquo;.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((customer) => (
+            </thead>
+            <tbody>
+              {filtered.map((customer) => (
                 <tr
                   key={customer.email}
+                  className="vl-row vl-link-row"
                   onClick={() => setSelectedEmail(customer.email)}
-                  style={{ cursor: 'pointer', background: selectedEmail === customer.email ? '#FAF8F4' : undefined }}
+                  style={{ background: selectedEmail === customer.email ? '#FDFAF6' : undefined }}
                   title="View customer details"
                 >
                   <td style={td}>
-                    {customer.name || '—'}
-                    {customer.phone ? (
-                      <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>+91 {customer.phone}</div>
-                    ) : null}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedEmail(customer.email);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        font: 'inherit',
+                        fontWeight: 500,
+                        color: 'var(--admin-text)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        textDecoration: 'underline',
+                        textDecorationColor: 'var(--admin-border)',
+                        textUnderlineOffset: '3px',
+                      }}
+                    >
+                      {customer.name || '—'}
+                    </button>
                     {!customer.uid ? (
-                      <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>Guest</div>
-                    ) : null}
-                  </td>
-                  <td style={{ ...td, wordBreak: 'break-all' }}>{customer.email}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{customer.orderCount}</td>
-                  <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {formatPrice(customer.totalSpent)}
-                    {customer.storeCredit ? (
-                      <div style={{ fontSize: '12px', color: '#1E6B45', marginTop: '2px' }}>
-                        Credit: {formatPrice(customer.storeCredit)}
+                      <div style={{ marginTop: '3px' }}>
+                        <span style={countBadge}>Guest</span>
                       </div>
                     ) : null}
                   </td>
-                  <td style={{ ...td, whiteSpace: 'nowrap' }} title={customer.lastOrderAt}>
-                    {relativeTime(customer.lastOrderAt)}
+                  <td style={{ ...td, wordBreak: 'break-all' }}>{customer.email}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap', color: customer.phone ? undefined : 'var(--admin-text-subtle)' }}>
+                    {customer.phone ? `+91 ${customer.phone}` : '—'}
+                  </td>
+                  <td style={{ ...td, textAlign: 'right' }}>{customer.orderCount}</td>
+                  <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontWeight: 600 }}>{formatPrice(customer.totalSpent)}</div>
+                    {customer.storeCredit ? (
+                      <div style={{ ...subText, color: OK }}>Credit {formatPrice(customer.storeCredit)}</div>
+                    ) : null}
+                  </td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                    <div>{formatDate(customer.firstOrderAt)}</div>
+                    <div style={subText} title={customer.lastOrderAt}>
+                      Last order {relativeTime(customer.lastOrderAt).toLowerCase()}
+                    </div>
                   </td>
                   <td style={{ ...td, textAlign: 'right' }}>
                     <a
                       href={`/admin/orders?email=${encodeURIComponent(customer.email)}`}
                       onClick={(event) => event.stopPropagation()}
-                      style={secondaryButton}
+                      style={btn('secondary', { size: 'sm' })}
                     >
                       View Orders
                     </a>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <CustomerDrawer email={selectedEmail} onClose={closeDrawer} />

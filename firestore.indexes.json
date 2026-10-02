@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "productListings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyId", "order": "ASCENDING" },
+        { "fieldPath": "listingSku", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "productSkus",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "listingId", "order": "ASCENDING" },
+        { "fieldPath": "size", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

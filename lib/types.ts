@@ -32,6 +32,10 @@ export interface Product {
   featured?: boolean;
   /** 'manual' for products added directly in the admin panel; sheet products leave this unset. */
   source?: 'sheet' | 'manual';
+  /** Firestore supplier doc ID (the supplier's Drive folder ID) — set for sheet products from a supplier folder. */
+  supplierId?: string;
+  /** Extra columns from the supplier sheet not mapped to a standard field (e.g. Pattern, Occasion, Season). */
+  attributes?: Record<string, string>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -41,7 +45,16 @@ export interface Product {
 /** Firestore productOverrides/{productId} — admin edits layered on top of a sheet product. */
 export interface ProductOverride {
   productId: string;
+  /** Final selling price (SP) = supplierPrice + markup. */
   priceOverride?: number;
+  compareAtPriceOverride?: number;
+  stockOverride?: number;
+  /** Cached raw purchase price from the supplier sheet. */
+  supplierPrice?: number;
+  /** Per-product INR markup added to supplierPrice. */
+  markup?: number;
+  /** true (default) = markup follows the supplier's margin; false = set manually, left alone by "Update Price". */
+  autoMarkup?: boolean;
   titleOverride?: string;
   descriptionOverride?: string;
   featured?: boolean;
@@ -375,4 +388,82 @@ export interface TrackingInfo {
   courier: string;
   trackingNumber: string;
   url?: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Catalog — 3-level product hierarchy (Firestore source of truth)    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Level 1 — grouping entity only.
+ * Must NOT contain title, description, images, color, pricing, or inventory.
+ */
+export interface ProductFamily {
+  id: string;
+  familySku: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Level 2 — one record per color variant.
+ * Title, description, images, and color belong here, NOT on the family.
+ */
+export interface ProductListing {
+  id: string;
+  familyId: string;
+  listingSku: string;
+  title: string;
+  description: string;
+  brand: string;
+  category: string;
+  color: string;
+  colorCode: string;
+  images: string[];
+  coverImage: string;
+  status: 'active' | 'draft' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Level 3 — actual sellable/inventory unit.
+ * All pricing and stock belong here.
+ * markup is always an INR amount, NEVER a percentage.
+ */
+export interface ProductSku {
+  id: string;
+  listingId: string;
+  sku: string;
+  size: string;
+  /** Purchase cost from supplier (INR). */
+  supplierPrice: number;
+  /** Fixed INR markup added to supplier price. NOT a percentage. */
+  markup: number;
+  /** MRP / compare-at price (INR). */
+  mrp: number;
+  /** Effective selling price = supplierPrice + markup (INR). */
+  sellingPrice: number;
+  stockQuantity: number;
+  barcode: string;
+  status: 'active' | 'draft' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ProductFamilyInput = Omit<ProductFamily, 'id' | 'createdAt' | 'updatedAt'>;
+export type ProductFamilyUpdate = Partial<Omit<ProductFamily, 'id' | 'createdAt'>>;
+
+export type ProductListingInput = Omit<ProductListing, 'id' | 'createdAt' | 'updatedAt'>;
+export type ProductListingUpdate = Partial<Omit<ProductListing, 'id' | 'createdAt'>>;
+
+export type ProductSkuInput = Omit<ProductSku, 'id' | 'createdAt' | 'updatedAt'>;
+export type ProductSkuUpdate = Partial<Omit<ProductSku, 'id' | 'createdAt'>>;
+
+/** A listing with its sibling listings (same family) and its SKUs, used in admin detail view. */
+export interface AdminListingDetail {
+  listing: ProductListing;
+  family: ProductFamily;
+  siblings: ProductListing[];
+  skus: ProductSku[];
 }

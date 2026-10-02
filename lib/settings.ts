@@ -27,6 +27,34 @@ export interface StoreSettings {
   brandPromise: BrandPromiseItem[];
   /** Warehouse pincode used as the pickup point for courier serviceability checks. */
   pickupPincode: string;
+  /** How often the auto price sync runs (hours). 0 = disabled. Default: 6. */
+  priceSyncIntervalHours: number;
+  /** ISO timestamp of the last successful auto price sync. */
+  lastPriceSyncAt: string;
+  /**
+   * Where product images live. 'link' = keep the supplier URLs as-is (default);
+   * 'firebase' = mirror images into Firebase Storage (needs FIREBASE_STORAGE_BUCKET).
+   */
+  imageStorageMode: ImageStorageMode;
+}
+
+export type ImageStorageMode = 'link' | 'firebase';
+
+export function isValidImageStorageMode(value: unknown): value is ImageStorageMode {
+  return value === 'link' || value === 'firebase';
+}
+
+/** Longest auto price sync interval the admin can set (hours) — 1 week. */
+export const MAX_PRICE_SYNC_INTERVAL_HOURS = 168;
+
+/** True for a whole number of hours 0..MAX_PRICE_SYNC_INTERVAL_HOURS (0 = auto sync disabled). */
+export function isValidPriceSyncInterval(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= MAX_PRICE_SYNC_INTERVAL_HOURS
+  );
 }
 
 /** Default warehouse pickup pincode (Surat). */
@@ -167,6 +195,9 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   stockNotFoundBehaviour: 'sold_out',
   brandPromise: DEFAULT_BRAND_PROMISE,
   pickupPincode: DEFAULT_PICKUP_PINCODE,
+  priceSyncIntervalHours: 6,
+  lastPriceSyncAt: '',
+  imageStorageMode: 'link',
 };
 
 /** Highest threshold the admin can set (INR) — guards against typos like 99999999. */
@@ -231,6 +262,14 @@ export async function getStoreSettings(): Promise<StoreSettings> {
       : DEFAULT_SETTINGS.stockNotFoundBehaviour,
     brandPromise: isValidBrandPromise(data?.brandPromise) ? data.brandPromise : DEFAULT_SETTINGS.brandPromise,
     pickupPincode: isValidPickupPincode(data?.pickupPincode) ? data.pickupPincode : DEFAULT_SETTINGS.pickupPincode,
+    priceSyncIntervalHours:
+      typeof data?.priceSyncIntervalHours === 'number' && data.priceSyncIntervalHours >= 0
+        ? Math.min(Math.floor(data.priceSyncIntervalHours), MAX_PRICE_SYNC_INTERVAL_HOURS)
+        : DEFAULT_SETTINGS.priceSyncIntervalHours,
+    lastPriceSyncAt: typeof data?.lastPriceSyncAt === 'string' ? data.lastPriceSyncAt : '',
+    imageStorageMode: isValidImageStorageMode(data?.imageStorageMode)
+      ? data.imageStorageMode
+      : DEFAULT_SETTINGS.imageStorageMode,
   };
 }
 

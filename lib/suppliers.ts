@@ -17,6 +17,8 @@ export interface Supplier {
   contactName: string;
   contactPhone: string;
   notes: string;
+  /** Fixed INR markup added to the purchase price to get the selling price. */
+  margin: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +38,10 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+function num(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
 function fromDoc(id: string, data: Record<string, unknown> | undefined): Supplier {
   const d = data ?? {};
   return {
@@ -47,13 +53,16 @@ function fromDoc(id: string, data: Record<string, unknown> | undefined): Supplie
     contactName: str(d.contactName),
     contactPhone: str(d.contactPhone),
     notes: str(d.notes),
+    margin: num(d.margin),
     createdAt: str(d.createdAt),
     updatedAt: str(d.updatedAt),
   };
 }
 
 const TEXT_FIELDS = ['name', 'spreadsheetId', 'sheetTab', 'driveFolderId', 'contactName', 'contactPhone', 'notes'] as const;
+const NUMBER_FIELDS = ['margin'] as const;
 const MAX_FIELD_LENGTH = 2000;
+const MAX_MARGIN = 100000;
 
 /**
  * Validates a request body. `partial` = PATCH (only the fields sent are checked).
@@ -75,6 +84,16 @@ export function parseSupplierBody(
     data[field] = value.trim();
   }
 
+  for (const field of NUMBER_FIELDS) {
+    const raw = input[field];
+    if (raw === undefined || raw === null || raw === '') continue;
+    const value = typeof raw === 'string' ? Number(raw.trim()) : raw;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > MAX_MARGIN) {
+      return { error: `Markup must be a whole number between 0 and ${MAX_MARGIN}.` };
+    }
+    data[field] = value;
+  }
+
   if (!partial || data.name !== undefined) {
     if (!data.name) return { error: 'Supplier name is required.' };
   }
@@ -90,6 +109,12 @@ export async function getSuppliers(): Promise<Supplier[]> {
   return snapshot.docs.map((doc) => fromDoc(doc.id, doc.data()));
 }
 
+/** One supplier by id, or null if it does not exist. */
+export async function getSupplier(id: string): Promise<Supplier | null> {
+  const snapshot = await getAdminDb().collection(SUPPLIERS_COLLECTION).doc(id).get();
+  return snapshot.exists ? fromDoc(snapshot.id, snapshot.data()) : null;
+}
+
 export async function createSupplier(data: SupplierInput): Promise<Supplier> {
   const now = new Date().toISOString();
   const ref = getAdminDb().collection(SUPPLIERS_COLLECTION).doc();
@@ -101,6 +126,7 @@ export async function createSupplier(data: SupplierInput): Promise<Supplier> {
     contactName: data.contactName ?? '',
     contactPhone: data.contactPhone ?? '',
     notes: data.notes ?? '',
+    margin: data.margin ?? 0,
     createdAt: now,
     updatedAt: now,
   };
@@ -113,10 +139,14 @@ export async function updateSupplier(id: string, data: SupplierUpdate): Promise<
   const existing = await ref.get();
   if (!existing.exists) throw new SupplierNotFoundError(id);
 
-  const updates: Record<string, string> = { updatedAt: new Date().toISOString() };
+  const updates: Record<string, string | number> = { updatedAt: new Date().toISOString() };
   for (const field of TEXT_FIELDS) {
     const value = data[field];
     if (typeof value === 'string') updates[field] = value;
+  }
+  for (const field of NUMBER_FIELDS) {
+    const value = data[field];
+    if (typeof value === 'number') updates[field] = value;
   }
   if (updates.sheetTab === '') updates.sheetTab = DEFAULT_SHEET_TAB;
 

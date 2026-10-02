@@ -1,6 +1,6 @@
 /**
  * GET  /api/admin/suppliers — returns { suppliers: Supplier[] } (ordered by name)
- * POST /api/admin/suppliers — body { name, spreadsheetId, sheetTab?, driveFolderId?, contactName?, contactPhone?, notes? }
+ * POST /api/admin/suppliers — body { name, spreadsheetId, sheetTab?, driveFolderId?, contactName?, contactPhone?, notes?, margin? }
  *                             returns { supplier: Supplier }
  *
  * Protected by HTTP Basic Auth in middleware.ts.
@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       contactName: data.contactName ?? '',
       contactPhone: data.contactPhone ?? '',
       notes: data.notes ?? '',
+      margin: data.margin ?? 0,
     });
     return NextResponse.json({ supplier });
   } catch (error) {

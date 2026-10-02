@@ -11,6 +11,29 @@
   --sand: #E4DACB;
   --pebble: #B8B0A4;
   --surface: #EDE7DA;
+
+  /* Admin design system */
+  --admin-sidebar-bg: #0F1623;
+  --admin-sidebar-text: #8A8F9C;
+  --admin-sidebar-text-active: #F5F0E8;
+  --admin-sidebar-accent: #C9A96E;
+  --admin-sidebar-hover: rgba(201, 169, 110, 0.08);
+  --admin-sidebar-active-bg: rgba(201, 169, 110, 0.12);
+  --admin-sidebar-border: rgba(255,255,255,0.06);
+  --admin-sidebar-width: 220px;
+
+  --admin-bg: #F5F0E8;
+  --admin-surface: #FFFFFF;
+  --admin-border: #E4DACB;
+  --admin-border-light: #EDE7DA;
+  --admin-text: #1C2230;
+  --admin-text-muted: #6F6A62;
+  --admin-text-subtle: #9E9A94;
+
+  --admin-gold: #C9A96E;
+  --admin-gold-light: rgba(201, 169, 110, 0.15);
+
+  --admin-header-height: 60px;
 }
 
 @layer base {

@@ -1,8 +1,26 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { ReturnStatusPill } from '@/components/admin/ReturnStatusPill';
-import { RETURN_STATUS_LABELS, RETURN_TYPE_LABELS } from '@/lib/returns-shared';
+import PageHeader from '@/components/admin/ui/PageHeader';
+import EmptyState from '@/components/admin/ui/EmptyState';
+import {
+  ADMIN_TABLE_CSS,
+  DANGER,
+  DANGER_BG,
+  DANGER_BORDER,
+  MONO,
+  SANS,
+  btn,
+  chip,
+  countBadge,
+  tableFrame,
+  tableStyle,
+  td,
+  th,
+} from '@/components/admin/ui/admin-styles';
+import { RETURN_REASON_LABELS, RETURN_STATUS_LABELS, RETURN_TYPE_LABELS } from '@/lib/returns-shared';
 import type { ReturnRequest, ReturnStatus } from '@/lib/types';
 import { formatPrice } from '@/lib/utils';
 
@@ -34,37 +52,7 @@ function formatDateTime(iso: string): string {
   });
 }
 
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '12px',
-  fontSize: '12px',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-  color: '#6F6A62',
-  borderBottom: '1px solid #e5e5e5',
-  whiteSpace: 'nowrap',
-};
-const td: React.CSSProperties = { padding: '12px', fontSize: '14px', borderBottom: '1px solid #f0f0f0', verticalAlign: 'top' };
-const primaryButton: React.CSSProperties = {
-  background: '#1C2230',
-  color: '#F6F1E8',
-  border: 'none',
-  borderRadius: '6px',
-  padding: '8px 14px',
-  fontSize: '13px',
-  fontWeight: 500,
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
-  textDecoration: 'none',
-  display: 'inline-block',
-};
-const secondaryButton: React.CSSProperties = {
-  ...primaryButton,
-  background: '#fff',
-  color: '#1C2230',
-  border: '1px solid #ccc',
-};
+const subText: CSSProperties = { fontSize: '12px', color: 'var(--admin-text-muted)', marginTop: '2px' };
 
 export default function AdminReturnsPage() {
   const [filter, setFilter] = useState<Filter>('all');
@@ -109,10 +97,20 @@ export default function AdminReturnsPage() {
   };
 
   return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '0 0 24px' }}>Returns &amp; Exchanges</h1>
+    <div style={{ fontFamily: SANS }}>
+      <style>{ADMIN_TABLE_CSS}</style>
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }} role="tablist" aria-label="Filter by status">
+      <PageHeader
+        title="Returns & Exchanges"
+        subtitle={loading ? 'Loading requests…' : `${total} ${total === 1 ? 'request' : 'requests'}`}
+        actions={
+          <button type="button" onClick={() => void loadReturns(filter, page)} style={btn('secondary')} disabled={loading}>
+            Refresh
+          </button>
+        }
+      />
+
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }} role="tablist" aria-label="Filter by status">
         {FILTERS.map((option) => {
           const active = option.value === filter;
           return (
@@ -125,112 +123,137 @@ export default function AdminReturnsPage() {
                 setFilter(option.value);
                 setPage(1);
               }}
-              style={{
-                ...secondaryButton,
-                background: active ? '#1C2230' : '#fff',
-                color: active ? '#F6F1E8' : '#1C2230',
-                borderColor: active ? '#1C2230' : '#ccc',
-              }}
+              style={{ ...chip(active), cursor: 'pointer', padding: '6px 14px' }}
             >
               {option.label}
+              {active && !loading ? (
+                <span style={{ ...countBadge, padding: '0 7px', background: 'rgba(245, 240, 232, 0.18)', color: 'inherit' }}>
+                  {total}
+                </span>
+              ) : null}
             </button>
           );
         })}
-        <button type="button" onClick={() => void loadReturns(filter, page)} style={{ ...secondaryButton, marginLeft: 'auto' }}>
-          Refresh
-        </button>
       </div>
 
       {error ? (
-        <p role="alert" style={{ background: '#F5E1DA', color: '#9A3B1E', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>
+        <div
+          role="alert"
+          style={{
+            background: DANGER_BG,
+            color: DANGER,
+            border: `1px solid ${DANGER_BORDER}`,
+            borderRadius: '6px',
+            padding: '10px 16px',
+            fontSize: '13px',
+            marginBottom: '16px',
+          }}
+        >
           {error}
-        </p>
+        </div>
       ) : null}
 
-      <div style={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: '8px', overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '880px' }}>
-          <thead>
-            <tr>
-              <th style={th}>Return ID</th>
-              <th style={th}>Customer</th>
-              <th style={th}>Product</th>
-              <th style={th}>Type</th>
-              <th style={th}>Status</th>
-              <th style={th}>Date</th>
-              <th style={th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+      <div style={tableFrame}>
+        {loading ? (
+          <p style={{ margin: 0, padding: '48px 24px', textAlign: 'center', fontSize: '13px', color: 'var(--admin-text-muted)' }}>
+            Loading returns…
+          </p>
+        ) : returns.length === 0 ? (
+          <EmptyState
+            title={filter === 'all' ? 'No returns yet' : `No ${RETURN_STATUS_LABELS[filter].toLowerCase()} returns`}
+            description={
+              filter === 'all'
+                ? 'Returns submitted by customers will appear here.'
+                : `There are no return requests with status “${RETURN_STATUS_LABELS[filter]}”.`
+            }
+          />
+        ) : (
+          <table style={{ ...tableStyle, minWidth: '1000px' }}>
+            <thead>
               <tr>
-                <td style={{ ...td, textAlign: 'center', color: '#6F6A62' }} colSpan={7}>
-                  Loading returns…
-                </td>
+                <th style={th}>Return #</th>
+                <th style={th}>Order #</th>
+                <th style={th}>Customer</th>
+                <th style={th}>Item</th>
+                <th style={th}>Reason</th>
+                <th style={th}>Status</th>
+                <th style={th}>Date</th>
+                <th style={{ ...th, textAlign: 'right' }}>Actions</th>
               </tr>
-            ) : returns.length === 0 ? (
-              <tr>
-                <td style={{ ...td, textAlign: 'center', color: '#6F6A62' }} colSpan={7}>
-                  No return requests {filter === 'all' ? 'yet' : `with status "${RETURN_STATUS_LABELS[filter]}"`}.
-                </td>
-              </tr>
-            ) : (
-              returns.map((item) => (
-                <tr
-                  key={item.returnId}
-                  onClick={() => openReturn(item.returnId)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <td style={{ ...td, fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>
-                    {item.returnId}
-                    <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>{item.orderId}</div>
+            </thead>
+            <tbody>
+              {returns.map((item) => (
+                <tr key={item.returnId} className="vl-row vl-link-row" onClick={() => openReturn(item.returnId)}>
+                  <td style={{ ...td, fontFamily: MONO, fontSize: '12px', whiteSpace: 'nowrap' }}>{item.returnId}</td>
+                  <td style={{ ...td, fontFamily: MONO, fontSize: '12px', whiteSpace: 'nowrap', color: 'var(--admin-text-muted)' }}>
+                    {item.orderId}
                   </td>
                   <td style={td}>
-                    {item.customerName || '—'}
-                    <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px', wordBreak: 'break-all' }}>{item.customerEmail}</div>
+                    <div style={{ fontWeight: 500 }}>{item.customerName || '—'}</div>
+                    <div style={{ ...subText, wordBreak: 'break-all' }}>{item.customerEmail}</div>
                   </td>
                   <td style={td}>
-                    {item.itemProductName}
-                    <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>
+                    <div>{item.itemProductName}</div>
+                    <div style={subText}>
                       Size {item.itemSize}
                       {item.requestedSize ? ` → ${item.requestedSize}` : ''} · {formatPrice(item.itemPrice || 0)}
                     </div>
                   </td>
-                  <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                    {RETURN_TYPE_LABELS[item.type] ?? item.type}
-                    <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>
-                      {item.paymentMethod === 'cod' ? 'COD order' : 'Paid online'}
+                  <td style={td}>
+                    <div>{RETURN_REASON_LABELS[item.reason] ?? item.reason ?? '—'}</div>
+                    <div style={subText}>
+                      {RETURN_TYPE_LABELS[item.type] ?? item.type} · {item.paymentMethod === 'cod' ? 'COD order' : 'Paid online'}
                     </div>
                   </td>
                   <td style={td}>
                     <ReturnStatusPill status={item.status} />
                   </td>
-                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{formatDateTime(item.createdAt)}</td>
-                  <td style={td}>
+                  <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--admin-text-muted)' }}>{formatDateTime(item.createdAt)}</td>
+                  <td style={{ ...td, textAlign: 'right' }}>
                     <a
                       href={`/admin/returns/${encodeURIComponent(item.returnId)}`}
-                      style={primaryButton}
+                      style={btn('primary', { size: 'sm' })}
                       onClick={(event) => event.stopPropagation()}
                     >
                       Manage
                     </a>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {total > PAGE_SIZE ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '16px', fontSize: '14px', color: '#6F6A62' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: '16px',
+            fontSize: '13px',
+            color: 'var(--admin-text-muted)',
+          }}
+        >
           <span>
             Page {page} · {total} requests
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button type="button" style={secondaryButton} disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+            <button
+              type="button"
+              style={btn('secondary', { size: 'sm', disabled: page <= 1 || loading })}
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
               Previous
             </button>
-            <button type="button" style={secondaryButton} disabled={!hasMore || loading} onClick={() => setPage((p) => p + 1)}>
+            <button
+              type="button"
+              style={btn('secondary', { size: 'sm', disabled: !hasMore || loading })}
+              disabled={!hasMore || loading}
+              onClick={() => setPage((p) => p + 1)}
+            >
               Next
             </button>
           </div>

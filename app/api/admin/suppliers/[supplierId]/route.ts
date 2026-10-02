@@ -1,7 +1,7 @@
 /**
  * /api/admin/suppliers/[supplierId]
  *
- * PATCH  — body: any of { name, spreadsheetId, sheetTab, driveFolderId, contactName, contactPhone, notes }
+ * PATCH  — body: any of { name, spreadsheetId, sheetTab, driveFolderId, contactName, contactPhone, notes, margin }
  *          returns { supplier: Supplier }
  * DELETE — returns { ok: true }
  *

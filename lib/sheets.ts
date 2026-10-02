@@ -441,11 +441,16 @@ interface SheetSchema {
   status: number | null; // live / draft / archived
   careInstructions: number | null;
   // Schema shape
+  headerRows: number; // 1 or 2 — number of header rows before data starts
   sizePerRow: boolean; // true = each row is one product+size (tall format)
   // For inventory sheets
   inventorySku: number | null;
   inventorySize: number | null;
   inventoryQty: number | null;
+  /** Extra columns not mapped to a standard field: { headerName → columnIndex } */
+  extraColumns: Record<string, number>;
+  /** Total number of columns detected from the header row (used to bound data reads). */
+  columnCount: number;
 }
 
 const SCHEMA_COLUMN_FIELDS = [
@@ -469,6 +474,18 @@ interface SchemaCacheDoc {
 }
 
 const schemaCache = new Map<string, { schema: SheetSchema; detectedAt: string }>();
+
+/** Wipes in-process + Firestore schema caches so next fetch re-runs Gemini detection. */
+export async function clearAllSchemaCaches(): Promise<void> {
+  schemaCache.clear();
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection(SCHEMA_CACHE_COLLECTION).get();
+    await Promise.all(snap.docs.map((d) => d.ref.delete()));
+  } catch {
+    // Firestore unavailable — in-process cache was already cleared above.
+  }
+}
 
 function isFresh(detectedAt: string): boolean {
   const time = Date.parse(detectedAt);
@@ -536,22 +553,34 @@ function errorText(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 300);
 }
 
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 const GEMINI_SCHEMA_TIMEOUT_MS = 20_000;
-/** Columns A–Z. */
-const MAX_COLUMNS = 26;
+const MAX_COLUMNS = 99; // supports sheets wider than Z (up to ~column CU)
 
 function emptySchema(): SheetSchema {
   return {
     id: null, name: null, description: null, price: null, compareAtPrice: null, sizes: null,
     colour: null, fabric: null, images: null, stock: null, status: null, careInstructions: null,
-    sizePerRow: false, inventorySku: null, inventorySize: null, inventoryQty: null,
+    headerRows: 2, sizePerRow: false, inventorySku: null, inventorySize: null, inventoryQty: null,
+    extraColumns: {}, columnCount: 0,
   };
 }
 
-/** Quotes a tab name for use in an A1 range, e.g. My Tab → 'My Tab'. */
-function tabRange(tab: string, range: string): string {
-  return `'${tab.replace(/'/g, "''")}'!${range}`;
+/** Quotes a tab name for use in an A1 range, e.g. My Tab → 'My Tab'. Omit range to read all columns. */
+function tabRange(tab: string, range?: string): string {
+  const escaped = `'${tab.replace(/'/g, "''")}'`;
+  return range ? `${escaped}!${range}` : escaped;
+}
+
+/** Converts 1-based column number to letter(s): 1→A, 26→Z, 27→AA, 28→AB. */
+function colLetter(n: number): string {
+  let result = '';
+  while (n > 0) {
+    n--;
+    result = String.fromCharCode(65 + (n % 26)) + result;
+    n = Math.floor(n / 26);
+  }
+  return result || 'A';
 }
 
 /** Coerces Gemini's raw JSON into a safe SheetSchema (bad indices become null). */
@@ -565,13 +594,23 @@ function normaliseSchema(raw: unknown): SheetSchema {
       typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < MAX_COLUMNS ? value : null;
   }
   schema.sizePerRow = obj.sizePerRow === true || obj.sizePerRow === 'true';
+  const hr = typeof obj.headerRows === 'string' ? Number(obj.headerRows) : obj.headerRows;
+  schema.headerRows = typeof hr === 'number' && (hr === 1 || hr === 2) ? hr : 1;
+  if (obj.extraColumns && typeof obj.extraColumns === 'object') {
+    for (const [k, v] of Object.entries(obj.extraColumns as Record<string, unknown>)) {
+      const idx = typeof v === 'number' ? v : Number(v);
+      if (Number.isInteger(idx) && idx >= 0) schema.extraColumns[k] = idx;
+    }
+  }
+  const cc = typeof obj.columnCount === 'number' ? obj.columnCount : Number(obj.columnCount);
+  if (Number.isInteger(cc) && cc > 0) schema.columnCount = cc;
   return schema;
 }
 
-/** Asks Gemini which column holds which field. Same REST call pattern as lib/photo-verification.ts. */
+/** Asks Gemini which column holds which field (fallback when ANTHROPIC_API_KEY is not set). */
 async function callGeminiForSchema(apiKey: string, model: string, prompt: string): Promise<unknown> {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -590,8 +629,41 @@ async function callGeminiForSchema(apiKey: string, model: string, prompt: string
     candidates?: { content?: { parts?: { text?: string }[] } }[];
   };
   const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
-  const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-  return JSON.parse(json);
+  const cleaned = text.replace(/\/\/[^\n]*/g, '').trim();
+  const parsed: unknown = JSON.parse(cleaned);
+  return Array.isArray(parsed) ? parsed[0] : parsed;
+}
+
+/** Asks Claude (Haiku) which column holds which field via the Anthropic Messages API. */
+async function callClaudeForSchema(apiKey: string, prompt: string): Promise<unknown> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+    signal: AbortSignal.timeout(GEMINI_SCHEMA_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`Claude HTTP ${response.status}: ${detail.slice(0, 300)}`);
+  }
+  const data = (await response.json()) as {
+    content?: { type: string; text?: string }[];
+  };
+  const text = data.content?.find((b) => b.type === 'text')?.text ?? '';
+  // Extract JSON from response — Claude may wrap it in markdown code fences
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) ?? text.match(/(\{[\s\S]*\})/);
+  const raw = jsonMatch ? jsonMatch[1] : text;
+  const cleaned = raw.replace(/\/\/[^\n]*/g, '').trim();
+  const parsed: unknown = JSON.parse(cleaned);
+  return Array.isArray(parsed) ? parsed[0] : parsed;
 }
 
 /**
@@ -619,39 +691,23 @@ async function detectSheetSchema(
     return stored.schema;
   }
 
-  // 3. Ask Gemini.
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.warn(`[sheets] GEMINI_API_KEY missing — cannot detect columns for "${tab}" in ${spreadsheetId}.`);
-    notify({
-      type: 'error',
-      category: 'schema_detection_failed',
-      title: 'Column detection is switched off',
-      message: `GEMINI_API_KEY is not set, so the columns of sheet tab "${tab}" could not be detected. Its products will not show.`,
-      supplierName,
-      spreadsheetId,
-    });
-    return emptySchema();
-  }
-  const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-
+  // 3. Read header rows and detect columns by keyword matching (free, no AI needed).
   let values: unknown[][];
   try {
     const response = await getSheetsClient().spreadsheets.values.get({
       spreadsheetId,
-      range: tabRange(tab, 'A1:Z10'),
+      range: tabRange(tab, 'A1:AZ10'),
     });
     values = (response.data.values ?? []) as unknown[][];
   } catch (error) {
-    // Re-thrown so fetchSupplier raises (and later clears) the 'sheet_unreadable' alert in one place.
     console.error(`[sheets] Could not read "${tab}" in ${spreadsheetId} for schema detection:`, error);
     throw error;
   }
 
   try {
-    const headers = (values[0] ?? []).map((v) => (v === null || v === undefined ? '' : String(v)));
-    const sampleRows = values.slice(1);
-    if (headers.length === 0) {
+    const row1 = (values[0] ?? []).map((v) => String(v ?? '').trim());
+    const row2 = (values[1] ?? []).map((v) => String(v ?? '').trim());
+    if (row1.length === 0) {
       console.warn(`[sheets] Tab "${tab}" in ${spreadsheetId} has no header row.`);
       notify({
         type: 'warning',
@@ -664,47 +720,20 @@ async function detectSheetSchema(
       return emptySchema();
     }
 
-    const prompt = `You are analyzing a supplier sheet for a men's fashion e-commerce brand (Vellee Luxe, India).
-Purpose: "${purpose}" (${purpose === 'products' ? 'product catalog data' : 'stock/inventory data'}).
+    // Rows 1+2 are always headers — merge them so "Product\nName" style splits resolve correctly.
+    const headers = row1.map((h, i) => `${h} ${row2[i] ?? ''}`.trim().toLowerCase());
 
-Headers (row 1, 0-based column indices):
-${JSON.stringify(headers)}
-
-Sample data (rows 2–10):
-${JSON.stringify(sampleRows)}
-
-Return ONLY valid JSON with these fields (column index 0-based, null if not found):
-{
-  "id": null,             // SKU / unique product ID / style code
-  "name": null,           // product name / title
-  "description": null,    // product description / details
-  "price": null,          // selling price / SP / sale price / offer price (₹/INR) — the discounted price
-  "compareAtPrice": null, // MRP / M.R.P. / compare at price / original price / list price / retail price (higher, pre-discount)
-  "sizes": null,          // sizes (comma-sep list in one cell — null if sizePerRow)
-  "colour": null,         // color / colour / shade
-  "fabric": null,         // fabric / material / composition
-  "images": null,         // image URL or link
-  "stock": null,          // stock / inventory / available qty (total per product)
-  "status": null,         // product status (live/draft/active/inactive)
-  "careInstructions": null,
-  "sizePerRow": false,    // true if each row represents one size variant of a product
-  "inventorySku": null,   // (inventory sheets) SKU column
-  "inventorySize": null,  // (inventory sheets) size column
-  "inventoryQty": null    // (inventory sheets) stock/qty/inventory column
-}`;
-
-    const schema = normaliseSchema(await callGeminiForSchema(apiKey, model, prompt));
+    const schema = detectSchemaFromHeaders(headers, purpose, 2);
     const detectedAt = new Date().toISOString();
     schemaCache.set(cacheKey, { schema, detectedAt });
     writeSchemaToFirestore(spreadsheetId, tab, schema, detectedAt);
 
-    // Inventory sheets are judged by their SKU/qty columns instead (see fetchInventoryMap).
     if (purpose === 'products' && schema.id === null && schema.name === null) {
       notify({
         type: 'warning',
         category: 'schema_detection_failed',
         title: 'Could not recognise supplier sheet columns',
-        message: `Gemini could not find a product ID or product name column in tab "${tab}". Its products will not show until the headers are clearer.`,
+        message: `Could not find a product ID or product name column in tab "${tab}". Headers found: ${row1.filter(Boolean).join(', ')}`,
         supplierName,
         spreadsheetId,
       });
@@ -713,18 +742,76 @@ Return ONLY valid JSON with these fields (column index 0-based, null if not foun
     }
     return schema;
   } catch (error) {
-    // Not cached anywhere, so the next refresh retries.
     console.error(`[sheets] Schema detection failed for "${tab}" in ${spreadsheetId}:`, error);
     notify({
       type: 'error',
       category: 'schema_detection_failed',
       title: 'Column detection failed',
-      message: `Gemini could not map the columns of tab "${tab}": ${errorText(error)}. It will retry on the next refresh.`,
+      message: `Could not map columns of tab "${tab}": ${errorText(error)}. It will retry on the next refresh.`,
       supplierName,
       spreadsheetId,
     });
     return emptySchema();
   }
+}
+
+/**
+ * Maps header strings to SheetSchema column indices using keyword matching.
+ * Handles common supplier header formats without any AI API calls.
+ */
+function detectSchemaFromHeaders(headers: string[], purpose: 'products' | 'inventory', headerRows: number): SheetSchema {
+  const schema = emptySchema();
+  schema.headerRows = headerRows;
+  schema.columnCount = headers.length;
+
+  const match = (patterns: RegExp[]): number | null => {
+    for (const pattern of patterns) {
+      const idx = headers.findIndex((h) => pattern.test(h));
+      if (idx !== -1) return idx;
+    }
+    return null;
+  };
+
+  if (purpose === 'products') {
+    schema.id = match([/\b(sku|style[\s_-]?code|item[\s_-]?code|product[\s_-]?id|article[\s_-]?no|art\.?\s*no|ref\.?\s*no)\b/i]);
+    schema.name = match([/\b(product[\s_-]?name|item[\s_-]?name|name|title|description[\s_-]?1|article[\s_-]?name)\b/i]);
+    schema.description = match([/\b(description|details|product[\s_-]?desc|about|notes)\b/i]);
+    schema.price = match([/\b(sp|selling[\s_-]?price|sale[\s_-]?price|offer[\s_-]?price|our[\s_-]?price|price)\b/i]);
+    schema.compareAtPrice = match([/\b(mrp|m\.r\.p|compare[\s_-]?at|original[\s_-]?price|list[\s_-]?price|retail[\s_-]?price|market[\s_-]?price)\b/i]);
+    schema.sizes = match([/\b(sizes?|available[\s_-]?sizes?|size[\s_-]?options?)\b/i]);
+    schema.colour = match([/\b(colou?r|shade|hue)\b/i]);
+    schema.fabric = match([/\b(fabric|material|composition|cloth|textile)\b/i]);
+    schema.images = match([/\b(images?|image[\s_-]?url|photo|picture|img|drive[\s_-]?link|google[\s_-]?drive)\b/i]);
+    schema.stock = match([/\b(stock|qty|quantity|inventory|available[\s_-]?qty|total[\s_-]?stock)\b/i]);
+    schema.status = match([/\b(status|live|active|visibility)\b/i]);
+    schema.careInstructions = match([/\b(care|wash|washing|care[\s_-]?instructions?|laundry)\b/i]);
+
+    // Detect size-per-row: if there's a size column AND an id column that repeats (typical tall format)
+    const sizeHeader = schema.sizes !== null ? headers[schema.sizes] : '';
+    schema.sizePerRow = /\b(size|variant)\b/i.test(sizeHeader) && schema.id !== null;
+  } else {
+    // Inventory sheet
+    schema.inventorySku = match([/\b(sku|style[\s_-]?code|item[\s_-]?code|product[\s_-]?id|article[\s_-]?no)\b/i]);
+    schema.inventorySize = match([/\b(size|variant|option)\b/i]);
+    schema.inventoryQty = match([/\b(qty|quantity|stock|inventory|count|available)\b/i]);
+  }
+
+  // Collect any column not already mapped to a standard field as an extra attribute.
+  const usedIndices = new Set(
+    [schema.id, schema.name, schema.description, schema.price, schema.compareAtPrice,
+     schema.sizes, schema.colour, schema.fabric, schema.images, schema.stock,
+     schema.status, schema.careInstructions, schema.inventorySku, schema.inventorySize, schema.inventoryQty]
+    .filter((v): v is number => v !== null),
+  );
+  const SKIP_HEADERS = /^(sr\.?\s*(no\.?|#?)|s\.no|#|sl\.?\s*no|serial|row|index|no\.?)$/i;
+  headers.forEach((header, idx) => {
+    if (header && !usedIndices.has(idx) && !SKIP_HEADERS.test(header)) {
+      schema.extraColumns[header] = idx;
+    }
+  });
+
+  console.log(`[sheets] Detected schema: name=${schema.name}, price=${schema.price}, id=${schema.id}, images=${schema.images}, extras=[${Object.keys(schema.extraColumns).join(', ')}]`);
+  return schema;
 }
 
 /* ------------------------------------------------------------------ */
@@ -795,12 +882,16 @@ function baseProductFromRow(row: unknown[], schema: SheetSchema, id: string): Pr
 function rowToProductDynamic(row: unknown[], schema: SheetSchema, _allRows: unknown[][]): Product | null {
   const product = baseProductFromRow(row, schema, schemaCell(row, schema.id));
   if (!product) return null;
+  const attributes: Record<string, string> = {};
+  for (const [header, idx] of Object.entries(schema.extraColumns)) {
+    const value = schemaCell(row, idx).trim();
+    if (value) attributes[header] = value;
+  }
   return {
     ...product,
     sizes: parseList(schemaCell(row, schema.sizes)).map((s) => s.toUpperCase()),
-    // No stock column or empty stock cell → 'unlimited' here means "unknown". mergeStock then uses the
-    // inventory sheet, or the admin's "When stock can't be found" setting (sold out or unlimited).
     stock: schema.stock === null ? 'unlimited' : parseStock(schemaCell(row, schema.stock)),
+    ...(Object.keys(attributes).length > 0 ? { attributes } : {}),
   };
 }
 
@@ -857,13 +948,18 @@ function rowGroupToProduct(group: { id: string; rows: unknown[][] }, schema: She
   }
 
   const hasSizeStock = Object.keys(stockBySize).length > 0;
+  const attributes: Record<string, string> = {};
+  for (const [header, idx] of Object.entries(schema.extraColumns)) {
+    const value = schemaCell(baseRow, idx).trim();
+    if (value) attributes[header] = value;
+  }
   return {
     ...product,
     sizes,
     images,
-    // No per-size quantities → 'unlimited' = "unknown"; mergeStock resolves it (see rowToProductDynamic).
     stock: hasSizeStock ? Object.values(stockBySize).reduce((sum, n) => sum + n, 0) : 'unlimited',
     ...(hasSizeStock ? { stockBySize } : {}),
+    ...(Object.keys(attributes).length > 0 ? { attributes } : {}),
   };
 }
 
@@ -916,9 +1012,12 @@ async function fetchInventoryMap(spreadsheetId: string, supplierName?: string): 
     console.warn(`[sheets] No size column detected in inventory sheet ${spreadsheetId} — using the SKU suffix as size.`);
   }
 
+  const dataRange = schema.columnCount > 0
+    ? tabRange(tab, `A3:${colLetter(schema.columnCount)}`)
+    : tabRange(tab);
   const response = await getSheetsClient().spreadsheets.values.get({
     spreadsheetId,
-    range: tabRange(tab, 'A2:Z'),
+    range: dataRange,
   });
   const rows = (response.data.values ?? []) as unknown[][];
   const map: InventoryMap = {};
@@ -1018,19 +1117,21 @@ function rawCopyHash(product: Product): string {
 
 function buildCopyPrompt(product: Product): string {
   const field = (value: string) => value.trim() || 'not specified';
+  const extras = Object.entries(product.attributes ?? {})
+    .map(([k, v]) => `- ${k}: ${v}`)
+    .join('\n');
   return `You are a product copywriter for Vellee Luxe, a premium Indian men's clothing brand. Generate a product name and description for this clothing item.
 
 Raw supplier data:
 - Raw name/title: ${field(product.name)}
 - Fabric/material: ${field(product.style)}
 - Colour: ${field(product.colour)}
-- Pattern: not specified
-- Category: not specified
 - SKU: ${field(product.id)}
-${product.description.trim() ? `- Raw description: ${product.description.trim().slice(0, 500)}\n` : ''}
+${product.description.trim() ? `- Raw description: ${product.description.trim().slice(0, 300)}\n` : ''}${extras ? `${extras}\n` : ''}
 Rules:
-- Name: 3-6 words, premium and specific (fabric + style + silhouette). No brand name in the name.
-- Description: 2-3 sentences. Mention fabric, fit, and occasion naturally. No marketing filler. Confident, editorial tone.
+- Name: 3-6 words, premium and specific (e.g. "Slim Cotton Oxford Shirt"). No brand name.
+- Description: 2-3 sentences. Mention fabric, fit, and occasion naturally. Confident, editorial tone. No marketing filler.
+- Use ALL the supplier data above to write something specific, not generic.
 - Respond with ONLY valid JSON: {"name": "...", "description": "..."}`;
 }
 
@@ -1039,7 +1140,7 @@ async function callGeminiForCopy(apiKey: string, model: string, prompt: string):
   const timer = setTimeout(() => controller.abort(), GEMINI_COPY_TIMEOUT_MS);
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -1147,7 +1248,10 @@ async function fetchSupplierProducts(
         console.warn(`[sheets] No product-name column detected in "${tab}" of ${spreadsheetId} — skipping tab.`);
         return [];
       }
-      const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: tabRange(tab, 'A2:Z') });
+      const dataRange = schema.columnCount > 0
+        ? tabRange(tab, `A3:${colLetter(schema.columnCount)}`)
+        : tabRange(tab, 'A3:AZ');
+      const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: dataRange });
       const rows = (response.data.values ?? []) as unknown[][];
       return parseSupplierRows(rows, schema);
     }),
@@ -1181,11 +1285,37 @@ async function fetchSupplierProducts(
       return images === product.images ? product : { ...product, images };
     }),
   );
-  // Only list products that have at least one image (sheet URL or product images/{id}/ folder).
-  // AI copy runs after this filter so Gemini is never called for products that won't be shown.
-  const withImages = resolved.filter((product) => product.images.length > 0);
-  const settled = await Promise.allSettled(withImages.map(applyAICopy));
-  return settled.map((result, i) => (result.status === 'fulfilled' ? result.value : withImages[i]));
+  const noImages = resolved.filter((p) => p.images.length === 0);
+  if (noImages.length > 0) {
+    console.warn(`[sheets] ${noImages.length} product(s) have no images yet — they will still be listed. Add image URLs to the sheet or a "product images/{id}/" subfolder in Drive.`);
+  }
+  console.log(`[sheets] ${resolved.length} product(s) parsed from ${spreadsheetId} (${resolved.length - noImages.length} with images, ${noImages.length} without).`);
+
+  // Generate AI copy once per parent SKU (size variants share it) to save Gemini calls.
+  const groups = new Map<string, Product[]>();
+  for (const p of resolved) {
+    const key = getParentKey(p.id);
+    const group = groups.get(key);
+    if (group) group.push(p);
+    else groups.set(key, [p]);
+  }
+
+  const grouped = await Promise.all(
+    Array.from(groups.values()).map(async (group) => {
+      const [parent, ...children] = group;
+      const withCopy = await applyAICopy(parent).catch(() => parent);
+      return [
+        withCopy,
+        ...children.map((child) => ({ ...child, name: withCopy.name, description: withCopy.description })),
+      ];
+    }),
+  );
+  return grouped.flat();
+}
+
+/** Strips a trailing size suffix (e.g. "ABC-XL", "ABC/32") to get the parent SKU key. */
+function getParentKey(id: string): string {
+  return id.replace(/[-\/](?:XS|S|M|L|XL|XXL|2XL|3XL)$/i, '').trim();
 }
 
 /** Reads every product sheet of one supplier folder, sharing that supplier's inventory map. */
@@ -1226,7 +1356,8 @@ async function fetchSupplier(supplier: SupplierDiscovery, stockNotFound: StockNo
       }
     }),
   );
-  const products = lists.flat();
+  // Supplier docs in Firestore are keyed by the Drive folder ID (see registerSuppliers).
+  const products = lists.flat().map((product) => ({ ...product, supplierId: supplier.supplierFolderId }));
 
   // Keyed by the supplier's Drive folder ID (one alert per supplier).
   const liveCount = products.filter(isLive).length;

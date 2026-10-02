@@ -1,8 +1,29 @@
 'use client';
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import type { StoreCredit, StoreCreditEntryType } from '@/lib/types';
 import { formatPrice } from '@/lib/utils';
+import PageHeader from '@/components/admin/ui/PageHeader';
+import EmptyState from '@/components/admin/ui/EmptyState';
+import {
+  ADMIN_TABLE_CSS,
+  DANGER,
+  DANGER_BG,
+  DANGER_BORDER,
+  MONO,
+  OK,
+  SANS,
+  SERIF,
+  btn,
+  card,
+  fieldInput,
+  fieldLabel,
+  sectionLabel,
+  tableFrame,
+  tableStyle,
+  td,
+  th,
+} from '@/components/admin/ui/admin-styles';
 
 interface Customer {
   uid: string;
@@ -23,52 +44,19 @@ function formatDateTime(iso: string): string {
   });
 }
 
-const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e5e5', borderRadius: '8px', padding: '20px' };
-const sectionTitle: React.CSSProperties = {
-  fontSize: '12px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
-  color: '#6F6A62',
-  margin: '0 0 12px',
-  fontWeight: 600,
-};
-const input: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 12px',
-  fontSize: '14px',
-  border: '1px solid #ccc',
-  borderRadius: '6px',
-  boxSizing: 'border-box',
-  marginTop: '6px',
-  background: '#fff',
-  fontFamily: 'inherit',
-};
-const label: React.CSSProperties = { display: 'block', fontSize: '14px', fontWeight: 500, marginBottom: '14px' };
-const primaryButton: React.CSSProperties = {
-  background: '#1C2230',
-  color: '#F6F1E8',
-  border: 'none',
+const CREDIT_COLOUR = OK;
+const DEBIT_COLOUR = DANGER;
+
+const field: CSSProperties = { marginBottom: '14px' };
+const alertBox: CSSProperties = {
+  background: DANGER_BG,
+  color: DANGER,
+  border: `1px solid ${DANGER_BORDER}`,
   borderRadius: '6px',
   padding: '10px 16px',
-  fontSize: '14px',
-  fontWeight: 500,
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
+  fontSize: '13px',
+  marginTop: '16px',
 };
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '10px 12px',
-  fontSize: '12px',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-  color: '#6F6A62',
-  borderBottom: '1px solid #e5e5e5',
-  whiteSpace: 'nowrap',
-};
-const td: React.CSSProperties = { padding: '10px 12px', fontSize: '14px', borderBottom: '1px solid #f0f0f0', verticalAlign: 'top' };
-const CREDIT_COLOUR = '#1E6B45';
-const DEBIT_COLOUR = '#9A3B1E';
 
 export default function AdminStoreCreditPage() {
   const [query, setQuery] = useState('');
@@ -76,6 +64,7 @@ export default function AdminStoreCreditPage() {
   const [credit, setCredit] = useState<StoreCredit | null>(null);
   const [looking, setLooking] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   const [type, setType] = useState<StoreCreditEntryType>('credit');
   const [amount, setAmount] = useState('');
@@ -112,7 +101,10 @@ export default function AdminStoreCreditPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const preset = params.get('uid') || params.get('email') || '';
-    if (params.get('orderId')) setOrderId(params.get('orderId') ?? '');
+    if (params.get('orderId')) {
+      setOrderId(params.get('orderId') ?? '');
+      setShowForm(true);
+    }
     if (preset) {
       setQuery(preset);
       void lookup(preset);
@@ -157,148 +149,252 @@ export default function AdminStoreCreditPage() {
     }
   };
 
-  return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '0 0 24px' }}>Store Credit</h1>
+  const issued = credit
+    ? credit.transactions.filter((t) => t.type !== 'debit').reduce((sum, t) => sum + Math.abs(t.amount), 0)
+    : 0;
 
-      <form onSubmit={handleLookup} style={{ ...card, display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <label style={{ ...label, flex: '1 1 280px', marginBottom: 0 }}>
-          Customer email or UID
+  return (
+    <div style={{ fontFamily: SANS }}>
+      <style>{ADMIN_TABLE_CSS}</style>
+
+      <PageHeader
+        title="Store Credit"
+        subtitle="Look up a customer to view their balance, ledger and make adjustments."
+        actions={
+          customer && credit ? (
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm((open) => !open);
+                setError(null);
+              }}
+              style={btn(showForm ? 'secondary' : 'primary')}
+            >
+              {showForm ? 'Close form' : 'Issue Store Credit'}
+            </button>
+          ) : undefined
+        }
+      />
+
+      <form onSubmit={handleLookup} style={{ ...card, padding: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div style={{ flex: '1 1 280px' }}>
+          <label htmlFor="sc-query" style={fieldLabel}>
+            Customer email or UID
+          </label>
           <input
+            id="sc-query"
             type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="customer@example.com"
-            style={input}
+            style={fieldInput}
           />
-        </label>
-        <button type="submit" style={{ ...primaryButton, opacity: looking ? 0.6 : 1 }} disabled={looking}>
+        </div>
+        <button type="submit" style={btn('primary', { disabled: looking })} disabled={looking}>
           {looking ? 'Looking up…' : 'Look up'}
         </button>
       </form>
 
       {lookupError ? (
-        <p role="alert" style={{ background: '#F5E1DA', color: DEBIT_COLOUR, padding: '12px 16px', borderRadius: '6px', fontSize: '14px', marginTop: '16px' }}>
+        <div role="alert" style={alertBox}>
           {lookupError}
-        </p>
+        </div>
       ) : null}
 
       {customer && credit ? (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginTop: '16px', alignItems: 'start' }}>
-            <section style={card}>
-              <h2 style={sectionTitle}>Customer</h2>
-              <p style={{ margin: '0 0 4px', fontWeight: 600 }}>{customer.name || '—'}</p>
-              <p style={{ margin: '0 0 4px', fontSize: '14px', wordBreak: 'break-all' }}>{customer.email}</p>
-              <p style={{ margin: 0, fontSize: '12px', color: '#6F6A62', fontFamily: 'ui-monospace, monospace', wordBreak: 'break-all' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '16px',
+              marginTop: '16px',
+              alignItems: 'start',
+            }}
+          >
+            <section style={{ ...card, padding: '20px 24px' }}>
+              <h2 style={{ ...sectionLabel, marginBottom: '12px' }}>Customer</h2>
+              <p style={{ margin: '0 0 4px', fontFamily: SERIF, fontSize: '20px', color: 'var(--admin-text)' }}>{customer.name || '—'}</p>
+              <p style={{ margin: '0 0 4px', fontSize: '13px', wordBreak: 'break-all', color: 'var(--admin-text)' }}>{customer.email}</p>
+              <p style={{ margin: 0, fontSize: '11px', color: 'var(--admin-text-subtle)', fontFamily: MONO, wordBreak: 'break-all' }}>
                 {customer.uid}
               </p>
-              <p style={{ ...sectionTitle, margin: '20px 0 4px' }}>Balance</p>
-              <p style={{ fontSize: '32px', fontWeight: 600, margin: 0 }}>{formatPrice(credit.balance)}</p>
-            </section>
 
-            <form onSubmit={handleSave} style={card}>
-              <h2 style={sectionTitle}>Manual adjustment</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
-                <label style={label}>
-                  Type
-                  <select value={type} onChange={(event) => setType(event.target.value as StoreCreditEntryType)} style={input}>
-                    <option value="credit">Credit (CR) — add</option>
-                    <option value="debit">Debit (DR) — deduct</option>
-                  </select>
-                </label>
-                <label style={label}>
-                  Amount (₹)
-                  <input type="number" min={1} step="1" value={amount} onChange={(event) => setAmount(event.target.value)} style={input} />
-                </label>
+              <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--admin-border-light)' }}>
+                <div>
+                  <p style={sectionLabel}>Balance</p>
+                  <p style={{ fontSize: '28px', fontWeight: 600, margin: '6px 0 0', color: 'var(--admin-text)' }}>{formatPrice(credit.balance)}</p>
+                </div>
+                <div>
+                  <p style={sectionLabel}>Total issued</p>
+                  <p style={{ fontSize: '18px', fontWeight: 500, margin: '12px 0 0', color: 'var(--admin-text-muted)' }}>{formatPrice(issued)}</p>
+                </div>
               </div>
-              <label style={label}>
-                Reason <span style={{ color: DEBIT_COLOUR }}>*</span>
-                <input
-                  type="text"
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  placeholder="e.g. Goodwill credit, Correction for order VL-123"
-                  maxLength={300}
-                  style={input}
-                />
-              </label>
-              <label style={label}>
-                Linked order ID <span style={{ color: '#6F6A62', fontWeight: 400 }}>(optional)</span>
-                <input type="text" value={orderId} onChange={(event) => setOrderId(event.target.value)} style={input} />
-              </label>
-              <label style={label}>
-                TPIN
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  value={tpin}
-                  onChange={(event) => setTpin(event.target.value)}
-                  style={input}
-                />
-              </label>
-              {error ? (
-                <p role="alert" style={{ color: DEBIT_COLOUR, fontSize: '14px', margin: '0 0 14px' }}>
-                  {error}
-                </p>
+
+              {!showForm ? (
+                <button type="button" onClick={() => setShowForm(true)} style={{ ...btn('secondary', { size: 'sm' }), marginTop: '20px' }}>
+                  Adjust balance
+                </button>
               ) : null}
-              {notice ? (
-                <p role="status" style={{ color: CREDIT_COLOUR, fontSize: '14px', margin: '0 0 14px' }}>
+              {!showForm && notice ? (
+                <p role="status" style={{ color: CREDIT_COLOUR, fontSize: '13px', margin: '12px 0 0' }}>
                   {notice}
                 </p>
               ) : null}
-              <button type="submit" style={{ ...primaryButton, opacity: saving ? 0.6 : 1 }} disabled={saving}>
-                {saving ? 'Saving…' : type === 'credit' ? 'Add Credit' : 'Deduct Credit'}
-              </button>
-            </form>
+            </section>
+
+            {showForm ? (
+              <form onSubmit={handleSave} style={{ ...card, padding: '20px 24px' }}>
+                <h2 style={{ ...sectionLabel, marginBottom: '16px' }}>Issue / adjust store credit</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+                  <div style={field}>
+                    <label htmlFor="sc-type" style={fieldLabel}>
+                      Type
+                    </label>
+                    <select
+                      id="sc-type"
+                      value={type}
+                      onChange={(event) => setType(event.target.value as StoreCreditEntryType)}
+                      style={fieldInput}
+                    >
+                      <option value="credit">Credit (CR) — add</option>
+                      <option value="debit">Debit (DR) — deduct</option>
+                    </select>
+                  </div>
+                  <div style={field}>
+                    <label htmlFor="sc-amount" style={fieldLabel}>
+                      Amount (₹)
+                    </label>
+                    <input
+                      id="sc-amount"
+                      type="number"
+                      min={1}
+                      step="1"
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      style={fieldInput}
+                    />
+                  </div>
+                </div>
+                <div style={field}>
+                  <label htmlFor="sc-reason" style={fieldLabel}>
+                    Reason <span style={{ color: DEBIT_COLOUR }}>*</span>
+                  </label>
+                  <input
+                    id="sc-reason"
+                    type="text"
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    placeholder="e.g. Goodwill credit, Correction for order VL-123"
+                    maxLength={300}
+                    style={fieldInput}
+                  />
+                </div>
+                <div style={field}>
+                  <label htmlFor="sc-order" style={fieldLabel}>
+                    Linked order ID <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional)</span>
+                  </label>
+                  <input id="sc-order" type="text" value={orderId} onChange={(event) => setOrderId(event.target.value)} style={fieldInput} />
+                </div>
+                <div style={field}>
+                  <label htmlFor="sc-tpin" style={fieldLabel}>
+                    TPIN
+                  </label>
+                  <input
+                    id="sc-tpin"
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={tpin}
+                    onChange={(event) => setTpin(event.target.value)}
+                    style={fieldInput}
+                  />
+                </div>
+                {error ? (
+                  <p role="alert" style={{ color: DEBIT_COLOUR, fontSize: '13px', margin: '0 0 14px' }}>
+                    {error}
+                  </p>
+                ) : null}
+                {notice ? (
+                  <p role="status" style={{ color: CREDIT_COLOUR, fontSize: '13px', margin: '0 0 14px' }}>
+                    {notice}
+                  </p>
+                ) : null}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button type="submit" style={btn('primary', { disabled: saving })} disabled={saving}>
+                    {saving ? 'Saving…' : type === 'credit' ? 'Add Credit' : 'Deduct Credit'}
+                  </button>
+                  <button type="button" onClick={() => setShowForm(false)} style={btn('secondary', { disabled: saving })} disabled={saving}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </div>
 
-          <section style={{ ...card, marginTop: '16px', padding: 0, overflowX: 'auto' }}>
-            <h2 style={{ ...sectionTitle, padding: '20px 20px 0' }}>Ledger</h2>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
-              <thead>
-                <tr>
-                  <th style={th}>Date</th>
-                  <th style={th}>Type</th>
-                  <th style={th}>Amount</th>
-                  <th style={th}>Reason</th>
-                  <th style={th}>Order / Return</th>
-                  <th style={th}>By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {credit.transactions.length === 0 ? (
+          <h2 style={{ ...sectionLabel, margin: '28px 0 10px' }}>Ledger</h2>
+          <div style={tableFrame}>
+            {credit.transactions.length === 0 ? (
+              <EmptyState title="No store credit issued." description="Credits and deductions for this customer will appear here." />
+            ) : (
+              <table style={{ ...tableStyle, minWidth: '760px' }}>
+                <thead>
                   <tr>
-                    <td style={{ ...td, textAlign: 'center', color: '#6F6A62' }} colSpan={6}>
-                      No store credit yet.
-                    </td>
+                    <th style={th}>Date</th>
+                    <th style={th}>Type</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Amount</th>
+                    <th style={th}>Reason</th>
+                    <th style={th}>Order / Return</th>
+                    <th style={th}>By</th>
                   </tr>
-                ) : (
-                  credit.transactions.map((entry, index) => {
+                </thead>
+                <tbody>
+                  {credit.transactions.map((entry, index) => {
                     const isCredit = entry.type !== 'debit';
+                    const colour = isCredit ? CREDIT_COLOUR : DEBIT_COLOUR;
                     return (
-                      <tr key={entry.id || `${entry.createdAt}-${index}`}>
-                        <td style={{ ...td, whiteSpace: 'nowrap' }}>{formatDateTime(entry.createdAt)}</td>
-                        <td style={{ ...td, fontWeight: 600, color: isCredit ? CREDIT_COLOUR : DEBIT_COLOUR }}>{isCredit ? 'CR' : 'DR'}</td>
-                        <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 600, color: isCredit ? CREDIT_COLOUR : DEBIT_COLOUR }}>
+                      <tr key={entry.id || `${entry.createdAt}-${index}`} className="vl-row">
+                        <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--admin-text-muted)' }}>{formatDateTime(entry.createdAt)}</td>
+                        <td style={td}>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              background: isCredit ? '#E0F2E9' : DANGER_BG,
+                              color: colour,
+                            }}
+                          >
+                            {isCredit ? 'CR' : 'DR'}
+                          </span>
+                        </td>
+                        <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: colour }}>
                           {isCredit ? '+' : '-'}
                           {formatPrice(Math.abs(entry.amount))}
                         </td>
                         <td style={td}>{entry.reason}</td>
-                        <td style={{ ...td, fontFamily: 'ui-monospace, monospace', fontSize: '13px' }}>
+                        <td style={{ ...td, fontFamily: MONO, fontSize: '12px' }}>
                           {entry.orderId || '—'}
-                          {entry.returnId ? <div style={{ color: '#6F6A62' }}>{entry.returnId}</div> : null}
+                          {entry.returnId ? <div style={{ color: 'var(--admin-text-muted)' }}>{entry.returnId}</div> : null}
                         </td>
                         <td style={{ ...td, textTransform: 'capitalize' }}>{entry.createdBy || '—'}</td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
-          </section>
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </>
+      ) : !lookupError && !looking ? (
+        <div style={{ ...tableFrame, marginTop: '16px' }}>
+          <EmptyState
+            title="No customer selected"
+            description="Search by email or UID above to see a customer's store credit balance and history."
+          />
+        </div>
       ) : null}
     </div>
   );

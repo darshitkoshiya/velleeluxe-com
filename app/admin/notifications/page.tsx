@@ -2,6 +2,7 @@
  * /admin/notifications — problems the site detected on its own (unreadable supplier
  * sheets, columns Gemini couldn't map, missing stock…). Reads Firestore on every request.
  */
+import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import {
@@ -11,6 +12,9 @@ import {
   type AdminNotification,
   type NotificationType,
 } from '@/lib/admin-notifications';
+import PageHeader from '@/components/admin/ui/PageHeader';
+import EmptyState from '@/components/admin/ui/EmptyState';
+import { ADMIN_FORM_CSS, DANGER, DANGER_BG, MONO, OK, SANS, button, sectionCard } from '@/components/admin/ui/form-styles';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +44,16 @@ async function dismissAction(id: string) {
   'use server';
   if (!isAdminRequest()) throw new Error('Unauthorized');
   await dismissNotification(id);
+  revalidatePath('/admin/notifications');
+  revalidatePath('/admin');
+}
+
+/** Marks every unresolved alert as resolved (same effect as Dismiss on each one). */
+async function dismissAllAction() {
+  'use server';
+  if (!isAdminRequest()) throw new Error('Unauthorized');
+  const open = (await getNotifications()).filter((n) => !n.resolved);
+  await Promise.all(open.map((n) => dismissNotification(n.id)));
   revalidatePath('/admin/notifications');
   revalidatePath('/admin');
 }
@@ -80,108 +94,95 @@ function fullTime(iso: string): string {
   return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
 }
 
-const DOT_COLOURS: Record<NotificationType, string> = {
-  error: '#C0392B',
-  warning: '#D4A017',
-  info: '#2F6FB5',
+const TYPE_TONES: Record<NotificationType, { fg: string; bg: string; label: string }> = {
+  error: { fg: '#9A3B1E', bg: '#F5E1DA', label: 'Error' },
+  warning: { fg: '#8A6100', bg: '#FFF4D6', label: 'Warning' },
+  info: { fg: '#2F5577', bg: '#E3EDF7', label: 'Info' },
 };
 
-const TYPE_LABELS: Record<NotificationType, string> = {
-  error: 'Error',
-  warning: 'Warning',
-  info: 'Info',
-};
+type FilterKey = 'all' | 'open' | 'resolved' | 'error' | 'warning';
 
-const sectionStyle: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e5e5',
-  borderRadius: '8px',
-  padding: '24px',
-};
+const FILTERS: { key: FilterKey; label: string; match: (n: AdminNotification) => boolean }[] = [
+  { key: 'all', label: 'All', match: () => true },
+  { key: 'open', label: 'Unresolved', match: (n) => !n.resolved },
+  { key: 'resolved', label: 'Resolved', match: (n) => n.resolved },
+  { key: 'error', label: 'Errors', match: (n) => n.type === 'error' },
+  { key: 'warning', label: 'Warnings', match: (n) => n.type === 'warning' },
+];
 
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  fontSize: '12px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
-  color: '#6F6A62',
-  fontWeight: 600,
-  padding: '0 12px 10px',
-  borderBottom: '1px solid #e5e5e5',
-  whiteSpace: 'nowrap',
-};
-
-const td: React.CSSProperties = {
-  padding: '14px 12px',
-  borderBottom: '1px solid #e5e5e5',
-  fontSize: '14px',
-  verticalAlign: 'top',
-};
-
-const smallButton: React.CSSProperties = {
-  background: 'transparent',
-  color: '#1C2230',
-  border: '1px solid #ccc',
-  borderRadius: '6px',
-  padding: '7px 12px',
-  fontSize: '13px',
-  fontWeight: 500,
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
-};
-
-function Row({ n }: { n: AdminNotification }) {
+function TypeIcon({ type }: { type: NotificationType }) {
+  const tone = TYPE_TONES[type];
+  const glyph = type === 'error' ? '!' : type === 'warning' ? '▲' : 'i';
   return (
-    <tr style={{ opacity: n.resolved ? 0.55 : 1 }}>
-      <td style={{ ...td, width: '24px' }}>
-        <span
-          role="img"
-          aria-label={TYPE_LABELS[n.type]}
-          title={TYPE_LABELS[n.type]}
-          style={{
-            display: 'inline-block',
-            width: '10px',
-            height: '10px',
-            borderRadius: '50%',
-            background: DOT_COLOURS[n.type],
-            marginTop: '5px',
-          }}
-        />
-      </td>
-      <td style={{ ...td, fontWeight: 600, minWidth: '160px' }}>
-        {n.title}
-        {n.resolved ? (
-          <span style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#1E6B45', marginTop: '4px' }}>Resolved</span>
-        ) : null}
-      </td>
-      <td style={{ ...td, color: '#3A3F4B', lineHeight: 1.5, minWidth: '240px' }}>
-        {n.message}
-        {n.spreadsheetId ? (
-          <span style={{ display: 'block', fontSize: '12px', color: '#6F6A62', marginTop: '4px', wordBreak: 'break-all' }}>
-            ID: {n.spreadsheetId}
-          </span>
-        ) : null}
-      </td>
-      <td style={{ ...td, whiteSpace: 'nowrap' }}>{n.supplierName || '—'}</td>
-      <td style={{ ...td, whiteSpace: 'nowrap', color: '#6F6A62' }}>
-        <time dateTime={n.updatedAt} title={fullTime(n.updatedAt)}>
-          {timeAgo(n.updatedAt)}
-        </time>
-      </td>
-      <td style={{ ...td, textAlign: 'right' }}>
-        {n.resolved ? null : (
-          <form action={dismissAction.bind(null, n.id)}>
-            <button type="submit" style={smallButton} aria-label={`Dismiss: ${n.title}`}>
-              Dismiss
-            </button>
-          </form>
-        )}
-      </td>
-    </tr>
+    <span
+      role="img"
+      aria-label={tone.label}
+      title={tone.label}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '28px',
+        height: '28px',
+        flexShrink: 0,
+        background: tone.bg,
+        color: tone.fg,
+        fontFamily: SANS,
+        fontSize: type === 'warning' ? '10px' : '13px',
+        fontWeight: 700,
+      }}
+    >
+      {glyph}
+    </span>
   );
 }
 
-export default async function AdminNotificationsPage() {
+function NotificationItem({ n, first }: { n: AdminNotification; first: boolean }) {
+  return (
+    <li
+      className="vl-row"
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '14px',
+        padding: '16px 20px',
+        borderTop: first ? 'none' : '1px solid var(--admin-border-light)',
+        opacity: n.resolved ? 0.6 : 1,
+      }}
+    >
+      <TypeIcon type={n.type} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)' }}>{n.title}</span>
+          {n.resolved ? (
+            <span style={{ fontSize: '11px', fontWeight: 500, color: OK, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Resolved
+            </span>
+          ) : null}
+        </div>
+        <p style={{ margin: '4px 0 0', fontSize: '13px', lineHeight: 1.5, color: 'var(--admin-text-muted)' }}>{n.message}</p>
+        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '6px', fontSize: '12px', color: 'var(--admin-text-subtle)' }}>
+          {n.supplierName ? <span>Supplier: {n.supplierName}</span> : null}
+          {n.spreadsheetId ? <span style={{ fontFamily: MONO, wordBreak: 'break-all' }}>ID: {n.spreadsheetId}</span> : null}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', flexShrink: 0 }}>
+        <time dateTime={n.updatedAt} title={fullTime(n.updatedAt)} style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', whiteSpace: 'nowrap' }}>
+          {timeAgo(n.updatedAt)}
+        </time>
+        {n.resolved ? null : (
+          <form action={dismissAction.bind(null, n.id)}>
+            <button type="submit" style={button('ghost', false, 'sm')} aria-label={`Mark resolved: ${n.title}`}>
+              Mark resolved
+            </button>
+          </form>
+        )}
+      </div>
+    </li>
+  );
+}
+
+export default async function AdminNotificationsPage({ searchParams }: { searchParams?: { filter?: string } }) {
   let notifications: AdminNotification[] = [];
   let loadError: string | null = null;
   try {
@@ -194,67 +195,83 @@ export default async function AdminNotificationsPage() {
   const openCount = notifications.filter((n) => !n.resolved).length;
   const resolvedCount = notifications.length - openCount;
 
+  const activeFilter = FILTERS.find((f) => f.key === searchParams?.filter) ?? FILTERS[0];
+  const visible = notifications.filter(activeFilter.match);
+
   return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '16px',
-          flexWrap: 'wrap',
-          margin: '0 0 24px',
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 600, margin: 0 }}>Notifications</h1>
-          {!loadError ? (
-            <p style={{ fontSize: '14px', color: '#6F6A62', margin: '6px 0 0' }}>
-              {openCount} unresolved · {resolvedCount} resolved
-            </p>
-          ) : null}
-        </div>
-        {resolvedCount > 0 ? (
-          <form action={clearResolvedAction}>
-            <button type="submit" style={{ ...smallButton, padding: '10px 16px', fontSize: '14px' }}>
-              Dismiss all resolved ({resolvedCount})
-            </button>
-          </form>
-        ) : null}
-      </div>
+    <div style={{ maxWidth: '960px', fontFamily: SANS }}>
+      <style>{ADMIN_FORM_CSS}</style>
+      <PageHeader
+        title="Notifications"
+        subtitle={loadError ? 'System alerts and sync problems' : `${openCount} unresolved · ${resolvedCount} resolved`}
+        actions={
+          loadError ? null : (
+            <>
+              {resolvedCount > 0 ? (
+                <form action={clearResolvedAction}>
+                  <button type="submit" style={button('ghost')}>
+                    Clear resolved ({resolvedCount})
+                  </button>
+                </form>
+              ) : null}
+              {openCount > 0 ? (
+                <form action={dismissAllAction}>
+                  <button type="submit" style={button('primary')}>
+                    Mark all resolved
+                  </button>
+                </form>
+              ) : null}
+            </>
+          )
+        }
+      />
 
       {loadError ? (
-        <p style={{ ...sectionStyle, borderColor: '#C8623D', color: '#C8623D' }}>{loadError}</p>
-      ) : notifications.length === 0 ? (
-        <section style={sectionStyle}>
-          <p style={{ margin: 0, fontSize: '15px', color: '#1E6B45', fontWeight: 500 }}>
-            All systems running — no issues detected.
-          </p>
-        </section>
+        <div role="alert" style={{ ...sectionCard, borderColor: '#E8C9BE', background: DANGER_BG, color: DANGER, fontSize: '13px' }}>
+          {loadError}
+        </div>
       ) : (
-        <section style={{ ...sectionStyle, padding: '20px 12px', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={th}>
-                  <span style={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
-                    Type
-                  </span>
-                </th>
-                <th style={th}>Title</th>
-                <th style={th}>Message</th>
-                <th style={th}>Supplier</th>
-                <th style={th}>Time</th>
-                <th style={{ ...th, textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {notifications.map((n) => (
-                <Row key={n.id} n={n} />
-              ))}
-            </tbody>
-          </table>
-        </section>
+        <>
+          <nav aria-label="Filter notifications" style={{ display: 'flex', gap: '0', flexWrap: 'wrap', marginBottom: '16px', borderBottom: '1px solid var(--admin-border)' }}>
+            {FILTERS.map((f) => {
+              const active = f.key === activeFilter.key;
+              const count = notifications.filter(f.match).length;
+              return (
+                <Link
+                  key={f.key}
+                  href={f.key === 'all' ? '/admin/notifications' : `/admin/notifications?filter=${f.key}`}
+                  aria-current={active ? 'page' : undefined}
+                  style={{
+                    padding: '10px 14px',
+                    marginBottom: '-1px',
+                    fontSize: '13px',
+                    fontWeight: active ? 600 : 400,
+                    color: active ? 'var(--admin-text)' : 'var(--admin-text-muted)',
+                    textDecoration: 'none',
+                    borderBottom: `2px solid ${active ? '#0F1623' : 'transparent'}`,
+                  }}
+                >
+                  {f.label}
+                  <span style={{ marginLeft: '6px', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>{count}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          <section style={{ ...sectionCard, padding: 0 }}>
+            {notifications.length === 0 ? (
+              <EmptyState title="All systems running" description="No issues detected. Sync and stock problems will appear here." />
+            ) : visible.length === 0 ? (
+              <EmptyState title="Nothing here" description={`No ${activeFilter.label.toLowerCase()} notifications.`} />
+            ) : (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {visible.map((n, index) => (
+                  <NotificationItem key={n.id} n={n} first={index === 0} />
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
       )}
     </div>
   );

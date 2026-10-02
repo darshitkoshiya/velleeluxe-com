@@ -5,7 +5,12 @@
  *                                   socialLinks?: { instagram, facebook, twitter, youtube, pinterest },
  *                                   stockNotFoundBehaviour?: 'sold_out' | 'unlimited',
  *                                   brandPromise?: { icon, title, description }[],
- *                                   pickupPincode?: string, tpin?: string }
+ *                                   pickupPincode?: string, tpin?: string,
+ *                                   priceSyncIntervalHours?: number (0–168, 0 = auto sync off),
+ *                                   lastPriceSyncAt?: string (ISO date or '' to reset),
+ *                                   imageStorageMode?: 'link' | 'firebase' }
+ *                            PATCH is an alias of POST.
+ *                   GET/POST responses also include storageBucketConfigured (true when FIREBASE_STORAGE_BUCKET is set).
  *                            (at least one field; only the fields sent are changed)
  *                            pickupPincode needs the admin TPIN (wrong -> 401 "Incorrect TPIN").
  *                            Or body { ekartConfig: { clientId?, username?, password?, staticToken?, baseUrl? }, tpin }
@@ -20,12 +25,15 @@ import {
   getStoreSettings,
   isValidBrandPromise,
   isValidFreeShippingThreshold,
+  isValidImageStorageMode,
   isValidPickupPincode,
+  isValidPriceSyncInterval,
   isValidReturnWindowByCategory,
   isValidShippingFee,
   isValidStockNotFoundBehaviour,
   MAX_BRAND_PROMISE_ITEMS,
   MAX_FREE_SHIPPING_THRESHOLD,
+  MAX_PRICE_SYNC_INTERVAL_HOURS,
   MAX_RETURN_WINDOW_DAYS,
   MAX_SHIPPING_FEE,
   MIN_BRAND_PROMISE_ITEMS,
@@ -39,6 +47,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { getEkartConfigStatus } from '@/lib/pincode';
 import { assertAdminTpin, StoreCreditError } from '@/lib/store-credit';
+import { isStorageConfigured } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +123,11 @@ function toResponse(settings: StoreSettings) {
     stockNotFoundBehaviour: settings.stockNotFoundBehaviour,
     brandPromise: settings.brandPromise,
     pickupPincode: settings.pickupPincode,
+    priceSyncIntervalHours: settings.priceSyncIntervalHours,
+    lastPriceSyncAt: settings.lastPriceSyncAt,
+    imageStorageMode: settings.imageStorageMode,
+    // Whether FIREBASE_STORAGE_BUCKET is set (never the bucket name itself).
+    storageBucketConfigured: isStorageConfigured(),
   };
 }
 
@@ -145,6 +159,9 @@ export async function POST(request: NextRequest) {
     stockNotFoundBehaviour?: unknown;
     brandPromise?: unknown;
     pickupPincode?: unknown;
+    priceSyncIntervalHours?: unknown;
+    lastPriceSyncAt?: unknown;
+    imageStorageMode?: unknown;
     ekartConfig?: unknown;
     tpin?: unknown;
   };
@@ -256,6 +273,35 @@ export async function POST(request: NextRequest) {
     }));
   }
 
+  if (input.priceSyncIntervalHours !== undefined) {
+    if (!isValidPriceSyncInterval(input.priceSyncIntervalHours)) {
+      return NextResponse.json(
+        { error: `Price sync interval must be a whole number of hours between 0 and ${MAX_PRICE_SYNC_INTERVAL_HOURS}.` },
+        { status: 400 },
+      );
+    }
+    updates.priceSyncIntervalHours = input.priceSyncIntervalHours;
+  }
+
+  // Only changed when explicitly sent — lets the admin reset the auto-sync clock ('' = never synced).
+  if (input.lastPriceSyncAt !== undefined) {
+    if (typeof input.lastPriceSyncAt !== 'string') {
+      return NextResponse.json({ error: 'lastPriceSyncAt must be text.' }, { status: 400 });
+    }
+    const value = input.lastPriceSyncAt.trim();
+    if (value !== '' && Number.isNaN(new Date(value).getTime())) {
+      return NextResponse.json({ error: 'lastPriceSyncAt must be an ISO date or empty.' }, { status: 400 });
+    }
+    updates.lastPriceSyncAt = value === '' ? '' : new Date(value).toISOString();
+  }
+
+  if (input.imageStorageMode !== undefined) {
+    if (!isValidImageStorageMode(input.imageStorageMode)) {
+      return NextResponse.json({ error: "imageStorageMode must be 'link' or 'firebase'." }, { status: 400 });
+    }
+    updates.imageStorageMode = input.imageStorageMode;
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Nothing to save.' }, { status: 400 });
   }
@@ -272,3 +318,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Could not save settings.' }, { status: 500 });
   }
 }
+
+/** PATCH behaves exactly like POST (partial update — only the fields sent are changed). */
+export const PATCH = POST;

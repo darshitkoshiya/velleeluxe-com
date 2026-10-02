@@ -1,10 +1,32 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import type { Order, OrderStatus } from '@/lib/types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
+import type { Order } from '@/lib/types';
 import { formatPrice } from '@/lib/utils';
+import PageHeader from '@/components/admin/ui/PageHeader';
+import StatusBadge from '@/components/admin/ui/StatusBadge';
+import EmptyState from '@/components/admin/ui/EmptyState';
+import {
+  ADMIN_TABLE_CSS,
+  DANGER,
+  DANGER_BG,
+  MONO,
+  OK,
+  SANS,
+  SERIF,
+  btn,
+  chip,
+  countBadge,
+  fieldInput,
+  fieldLabel,
+  tableFrame,
+  tableStyle,
+  td,
+  th,
+} from '@/components/admin/ui/admin-styles';
 
-type Filter = 'all' | 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered';
+type Filter = 'all' | 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -13,16 +35,8 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'processing', label: 'Processing' },
   { value: 'shipped', label: 'Shipped' },
   { value: 'delivered', label: 'Delivered' },
+  { value: 'cancelled', label: 'Cancelled' },
 ];
-
-const STATUS_COLOURS: Record<OrderStatus, { bg: string; fg: string }> = {
-  pending: { bg: '#FFF4D6', fg: '#8A6100' },
-  confirmed: { bg: '#E3EDF7', fg: '#2F5577' },
-  processing: { bg: '#EDE7F6', fg: '#553C8B' },
-  shipped: { bg: '#E0F2E9', fg: '#1E6B45' },
-  delivered: { bg: '#D6EFD8', fg: '#185C24' },
-  cancelled: { bg: '#F5E1DA', fg: '#9A3B1E' },
-};
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -41,44 +55,30 @@ function itemCount(order: Order): number {
   return (order.items ?? []).reduce((sum, item) => sum + (item.quantity || 0), 0);
 }
 
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '12px',
-  fontSize: '12px',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-  color: '#6F6A62',
-  borderBottom: '1px solid #e5e5e5',
-  whiteSpace: 'nowrap',
-};
-const td: React.CSSProperties = { padding: '12px', fontSize: '14px', borderBottom: '1px solid #f0f0f0', verticalAlign: 'top' };
-const primaryButton: React.CSSProperties = {
-  background: '#1C2230',
-  color: '#F6F1E8',
-  border: 'none',
-  borderRadius: '6px',
-  padding: '8px 14px',
-  fontSize: '13px',
-  fontWeight: 500,
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
-};
-const secondaryButton: React.CSSProperties = {
-  ...primaryButton,
-  background: '#fff',
-  color: '#1C2230',
-  border: '1px solid #ccc',
-};
-const input: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 12px',
-  fontSize: '14px',
-  border: '1px solid #ccc',
-  borderRadius: '6px',
-  boxSizing: 'border-box',
-  marginTop: '6px',
-};
+const subText: CSSProperties = { fontSize: '12px', color: 'var(--admin-text-muted)', marginTop: '2px' };
+
+function banner(tone: 'info' | 'ok' | 'error'): CSSProperties {
+  const tones = {
+    info: { bg: '#E3EDF7', fg: '#2F5577', border: '#C9D9EA' },
+    ok: { bg: '#E0F2E9', fg: OK, border: '#BFE0CD' },
+    error: { bg: DANGER_BG, fg: DANGER, border: '#E8C9BE' },
+  }[tone];
+  return {
+    background: tones.bg,
+    color: tones.fg,
+    border: `1px solid ${tones.border}`,
+    padding: '10px 16px',
+    borderRadius: '6px',
+    marginBottom: '16px',
+    fontFamily: SANS,
+    fontSize: '13px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '12px',
+    flexWrap: 'wrap',
+  };
+}
 
 export default function AdminOrdersPage() {
   const [filter, setFilter] = useState<Filter>('all');
@@ -90,6 +90,8 @@ export default function AdminOrdersPage() {
   const [emailFilter, setEmailFilter] = useState('');
   // Optional ?search= order ID filter (linked from the customer drawer).
   const [orderIdFilter, setOrderIdFilter] = useState('');
+  // Free-text search over the loaded orders (client-side only).
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -108,11 +110,19 @@ export default function AdminOrdersPage() {
     window.history.replaceState(null, '', url.toString());
   };
 
-  const visibleOrders = orders.filter(
-    (order) =>
-      (!emailFilter || (order.customerEmail ?? '').trim().toLowerCase() === emailFilter) &&
-      (!orderIdFilter || (order.orderId ?? '').toUpperCase() === orderIdFilter),
-  );
+  const visibleOrders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return orders.filter(
+      (order) =>
+        (!emailFilter || (order.customerEmail ?? '').trim().toLowerCase() === emailFilter) &&
+        (!orderIdFilter || (order.orderId ?? '').toUpperCase() === orderIdFilter) &&
+        (!q ||
+          (order.orderId ?? '').toLowerCase().includes(q) ||
+          (order.customerName ?? '').toLowerCase().includes(q) ||
+          (order.customerEmail ?? '').toLowerCase().includes(q) ||
+          (order.customerPhone ?? '').toLowerCase().includes(q)),
+    );
+  }, [orders, emailFilter, orderIdFilter, search]);
 
   // "Mark as Shipped" modal
   const [shipping, setShipping] = useState<Order | null>(null);
@@ -180,40 +190,66 @@ export default function AdminOrdersPage() {
     }
   };
 
-  return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '0 0 24px' }}>Orders</h1>
+  const filterLabel = FILTERS.find((f) => f.value === filter)?.label.toLowerCase() ?? filter;
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }} role="tablist" aria-label="Filter by status">
-        {FILTERS.map((option) => {
-          const active = option.value === filter;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setFilter(option.value)}
-              style={{
-                ...secondaryButton,
-                background: active ? '#1C2230' : '#fff',
-                color: active ? '#F6F1E8' : '#1C2230',
-                borderColor: active ? '#1C2230' : '#ccc',
-              }}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-        <button type="button" onClick={() => void loadOrders(filter)} style={{ ...secondaryButton, marginLeft: 'auto' }}>
-          Refresh
-        </button>
+  return (
+    <div style={{ fontFamily: SANS }}>
+      <style>{ADMIN_TABLE_CSS}</style>
+
+      <PageHeader
+        title="Orders"
+        subtitle={loading ? 'Loading orders…' : `${visibleOrders.length} ${visibleOrders.length === 1 ? 'order' : 'orders'}${filter === 'all' ? '' : ` · ${filterLabel}`}`}
+        actions={
+          <button type="button" onClick={() => void loadOrders(filter)} style={btn('secondary')} disabled={loading}>
+            Refresh
+          </button>
+        }
+      />
+
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}
+      >
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', flex: '1 1 auto' }} role="tablist" aria-label="Filter by status">
+          {FILTERS.map((option) => {
+            const active = option.value === filter;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setFilter(option.value)}
+                style={{ ...chip(active), cursor: 'pointer', padding: '6px 14px' }}
+              >
+                {option.label}
+                {active && !loading ? (
+                  <span
+                    style={{
+                      ...countBadge,
+                      padding: '0 7px',
+                      background: 'rgba(245, 240, 232, 0.18)',
+                      color: 'inherit',
+                    }}
+                  >
+                    {orders.length}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search by order ID, customer..."
+          aria-label="Search orders"
+          style={{ ...fieldInput, width: '280px', maxWidth: '100%', fontSize: '13px' }}
+        />
       </div>
 
       {emailFilter || orderIdFilter ? (
-        <div
-          style={{ background: '#E3EDF7', color: '#2F5577', padding: '10px 16px', borderRadius: '6px', marginBottom: '16px', fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-        >
+        <div style={banner('info')}>
           <span style={{ wordBreak: 'break-all' }}>
             {orderIdFilter ? (
               <>Showing order <strong>{orderIdFilter}</strong></>
@@ -221,126 +257,125 @@ export default function AdminOrdersPage() {
               <>Showing orders for <strong>{emailFilter}</strong></>
             )}
           </span>
-          <button type="button" onClick={clearEmailFilter} style={{ ...secondaryButton, padding: '6px 12px' }}>
+          <button type="button" onClick={clearEmailFilter} style={btn('secondary', { size: 'sm' })}>
             {orderIdFilter ? 'Show all orders' : 'Show all customers'}
           </button>
         </div>
       ) : null}
 
       {notice ? (
-        <div
-          role="status"
-          style={{ background: '#E0F2E9', color: '#1E6B45', padding: '12px 16px', borderRadius: '6px', marginBottom: '16px', fontSize: '14px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}
-        >
+        <div role="status" style={banner('ok')}>
           <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }} aria-label="Dismiss">
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: '14px' }}
+            aria-label="Dismiss"
+          >
             ✕
           </button>
         </div>
       ) : null}
 
       {error ? (
-        <p role="alert" style={{ background: '#F5E1DA', color: '#9A3B1E', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>
+        <div role="alert" style={banner('error')}>
           {error}
-        </p>
+        </div>
       ) : null}
 
-      <div style={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: '8px', overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '960px' }}>
-          <thead>
-            <tr>
-              <th style={th}>Order ID</th>
-              <th style={th}>Customer</th>
-              <th style={th}>Email</th>
-              <th style={th}>Items</th>
-              <th style={th}>Total</th>
-              <th style={th}>Payment</th>
-              <th style={th}>Status</th>
-              <th style={th}>Date</th>
-              <th style={th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+      <div style={tableFrame}>
+        {loading ? (
+          <p style={{ margin: 0, padding: '48px 24px', textAlign: 'center', fontSize: '13px', color: 'var(--admin-text-muted)' }}>
+            Loading orders…
+          </p>
+        ) : visibleOrders.length === 0 ? (
+          <EmptyState
+            title={orders.length === 0 && filter === 'all' && !search ? 'No orders yet' : 'No orders match this filter'}
+            description={
+              search.trim()
+                ? `Nothing matches “${search.trim()}”${filter === 'all' ? '' : ` in ${filterLabel} orders`}.`
+                : filter === 'all'
+                  ? emailFilter
+                    ? `No orders found for ${emailFilter}.`
+                    : 'Orders placed on the store will appear here.'
+                  : `There are no ${filterLabel} orders${emailFilter ? ` for ${emailFilter}` : ''}.`
+            }
+            action={
+              search.trim() ? (
+                <button type="button" onClick={() => setSearch('')} style={btn('secondary')}>
+                  Clear search
+                </button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <table style={{ ...tableStyle, minWidth: '900px' }}>
+            <thead>
               <tr>
-                <td style={{ ...td, textAlign: 'center', color: '#6F6A62' }} colSpan={9}>
-                  Loading orders…
-                </td>
+                <th style={th}>Order #</th>
+                <th style={th}>Customer</th>
+                <th style={{ ...th, textAlign: 'right' }}>Items</th>
+                <th style={{ ...th, textAlign: 'right' }}>Total ₹</th>
+                <th style={th}>Status</th>
+                <th style={th}>Date</th>
+                <th style={{ ...th, textAlign: 'right' }}>Actions</th>
               </tr>
-            ) : visibleOrders.length === 0 ? (
-              <tr>
-                <td style={{ ...td, textAlign: 'center', color: '#6F6A62' }} colSpan={9}>
-                  No orders {filter === 'all' ? 'yet' : `with status "${filter}"`}
-                  {emailFilter ? ` for ${emailFilter}` : ''}.
-                </td>
-              </tr>
-            ) : (
-              visibleOrders.map((order) => {
-                const colours = STATUS_COLOURS[order.status] ?? { bg: '#eee', fg: '#333' };
+            </thead>
+            <tbody>
+              {visibleOrders.map((order) => {
                 const canShip = order.status === 'confirmed' || order.status === 'processing';
+                const hasCredit = (order.storeCreditApplied ?? 0) > 0;
+                const hasDiscount = (order.discountAmount ?? 0) > 0;
                 return (
-                  <tr key={order.orderId}>
-                    <td style={{ ...td, fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>{order.orderId}</td>
+                  <tr key={order.orderId} className="vl-row">
+                    <td style={{ ...td, fontFamily: MONO, fontSize: '12px', whiteSpace: 'nowrap' }}>{order.orderId}</td>
                     <td style={td}>
-                      {order.customerName}
-                      {order.customerPhone ? (
-                        <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>+91 {order.customerPhone}</div>
-                      ) : null}
-                    </td>
-                    <td style={{ ...td, wordBreak: 'break-all' }}>{order.customerEmail}</td>
-                    <td style={td}>{itemCount(order)}</td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                      {formatPrice(order.total || 0)}
-                      {(order.storeCreditApplied ?? 0) > 0 ? (
-                        <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>
-                          Store credit: −{formatPrice(order.storeCreditApplied ?? 0)}
-                        </div>
-                      ) : null}
-                      {(order.discountAmount ?? 0) > 0 ? (
-                        <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '2px' }}>
-                          Discount{order.discountCode ? ` (${order.discountCode})` : ''}: −{formatPrice(order.discountAmount ?? 0)}
-                        </div>
-                      ) : null}
-                      <div style={{ fontSize: '12px', color: '#1C2230', fontWeight: 600, marginTop: '4px' }}>
-                        Charged to payment: {formatPrice(order.amountChargedToPayment ?? (order.total || 0))}
+                      <div style={{ fontWeight: 500 }}>{order.customerName || '—'}</div>
+                      <div style={{ ...subText, wordBreak: 'break-all' }}>
+                        {order.customerEmail}
+                        {order.customerPhone ? ` · +91 ${order.customerPhone}` : ''}
                       </div>
                     </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }}>{order.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online'}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{itemCount(order)}</td>
+                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: 600 }}>{formatPrice(order.total || 0)}</div>
+                      {hasCredit ? <div style={subText}>Store credit −{formatPrice(order.storeCreditApplied ?? 0)}</div> : null}
+                      {hasDiscount ? (
+                        <div style={subText}>
+                          Discount{order.discountCode ? ` (${order.discountCode})` : ''} −{formatPrice(order.discountAmount ?? 0)}
+                        </div>
+                      ) : null}
+                      {hasCredit || hasDiscount ? (
+                        <div style={{ ...subText, color: 'var(--admin-text)' }}>
+                          Charged {formatPrice(order.amountChargedToPayment ?? (order.total || 0))}
+                        </div>
+                      ) : null}
+                      <div style={subText}>{order.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online'}</div>
+                    </td>
                     <td style={td}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          padding: '3px 10px',
-                          borderRadius: '999px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          textTransform: 'capitalize',
-                          background: colours.bg,
-                          color: colours.fg,
-                        }}
-                      >
-                        {order.status}
-                      </span>
+                      <StatusBadge status={order.status} size="sm" />
                       {order.shippingInfo && (order.shippingInfo.courier || order.shippingInfo.trackingNumber) ? (
-                        <div style={{ fontSize: '12px', color: '#6F6A62', marginTop: '4px' }}>
+                        <div style={{ ...subText, marginTop: '4px' }}>
                           {[order.shippingInfo.courier, order.shippingInfo.trackingNumber].filter(Boolean).join(' · ')}
                         </div>
                       ) : null}
                     </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }}>{formatDateTime(order.createdAt)}</td>
-                    <td style={td}>
+                    <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--admin-text-muted)' }}>{formatDateTime(order.createdAt)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>
                       {canShip ? (
-                        <button type="button" style={primaryButton} onClick={() => openShipModal(order)}>
+                        <button type="button" style={btn('primary', { size: 'sm' })} onClick={() => openShipModal(order)}>
                           Mark as Shipped
                         </button>
-                      ) : null}
+                      ) : (
+                        <span style={{ color: 'var(--admin-text-subtle)' }}>—</span>
+                      )}
                     </td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {shipping ? (
@@ -352,7 +387,7 @@ export default function AdminOrdersPage() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(28, 34, 48, 0.5)',
+            background: 'rgba(15, 22, 35, 0.5)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -362,50 +397,64 @@ export default function AdminOrdersPage() {
         >
           <div
             onClick={(event) => event.stopPropagation()}
-            style={{ background: '#fff', borderRadius: '10px', padding: '24px', width: '100%', maxWidth: '420px' }}
+            style={{
+              background: 'var(--admin-surface)',
+              border: '1px solid var(--admin-border)',
+              borderRadius: '8px',
+              padding: '24px',
+              width: '100%',
+              maxWidth: '440px',
+              fontFamily: SANS,
+            }}
           >
-            <h2 id="ship-modal-title" style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 4px' }}>
+            <h2 id="ship-modal-title" style={{ fontFamily: SERIF, fontSize: '22px', fontWeight: 400, margin: '0 0 6px', color: 'var(--admin-text)' }}>
               Mark as Shipped
             </h2>
-            <p style={{ fontSize: '14px', color: '#6F6A62', margin: '0 0 20px' }}>
+            <p style={{ fontSize: '13px', lineHeight: 1.6, color: 'var(--admin-text-muted)', margin: '0 0 20px' }}>
               Order {shipping.orderId} for {shipping.customerName}. The customer will get a “your order has shipped” email.
             </p>
 
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, marginBottom: '14px' }}>
-              Courier name <span style={{ color: '#6F6A62', fontWeight: 400 }}>(optional)</span>
+            <div style={{ marginBottom: '14px' }}>
+              <label htmlFor="ship-courier" style={fieldLabel}>
+                Courier name <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional)</span>
+              </label>
               <input
+                id="ship-courier"
                 type="text"
                 value={courier}
                 onChange={(event) => setCourier(event.target.value)}
                 placeholder="e.g. Delhivery, Blue Dart"
-                style={input}
+                style={fieldInput}
                 autoFocus
               />
-            </label>
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, marginBottom: '20px' }}>
-              Tracking number <span style={{ color: '#6F6A62', fontWeight: 400 }}>(optional)</span>
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label htmlFor="ship-tracking" style={fieldLabel}>
+                Tracking number <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional)</span>
+              </label>
               <input
+                id="ship-tracking"
                 type="text"
                 value={trackingNumber}
                 onChange={(event) => setTrackingNumber(event.target.value)}
                 placeholder="e.g. 1234567890"
-                style={input}
+                style={fieldInput}
               />
-            </label>
+            </div>
 
             {modalError ? (
-              <p role="alert" style={{ color: '#9A3B1E', fontSize: '14px', margin: '0 0 16px' }}>
+              <p role="alert" style={{ color: DANGER, fontSize: '13px', margin: '0 0 16px' }}>
                 {modalError}
               </p>
             ) : null}
 
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button type="button" style={secondaryButton} onClick={closeShipModal} disabled={submitting}>
+              <button type="button" style={btn('secondary', { disabled: submitting })} onClick={closeShipModal} disabled={submitting}>
                 Cancel
               </button>
               <button
                 type="button"
-                style={{ ...primaryButton, opacity: submitting ? 0.6 : 1 }}
+                style={btn('primary', { disabled: submitting })}
                 onClick={() => void confirmShip()}
                 disabled={submitting}
               >

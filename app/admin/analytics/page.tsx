@@ -2,51 +2,27 @@
  * /admin/analytics — revenue, top products, locations and repeat customers.
  * Data comes from lib/analytics.ts (cached 15 minutes, cleared when orders change).
  */
+import type { CSSProperties } from 'react';
 import { getAnalytics, type AnalyticsSummary, type DailyRevenue } from '@/lib/analytics';
 import { formatPrice } from '@/lib/utils';
+import PageHeader from '@/components/admin/ui/PageHeader';
+import StatCard from '@/components/admin/ui/StatCard';
+import EmptyState from '@/components/admin/ui/EmptyState';
+import { ADMIN_FORM_CSS, DANGER_BG, SANS, sectionCard, sectionTitle, td, th } from '@/components/admin/ui/form-styles';
 
 export const dynamic = 'force-dynamic';
 
-const card: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e5e5',
-  borderRadius: '8px',
-  padding: '20px',
-};
-
-const cardLabel: React.CSSProperties = {
-  fontSize: '12px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
-  color: '#6F6A62',
-  margin: 0,
-};
-
-const cardValue: React.CSSProperties = { fontSize: '32px', fontWeight: 600, margin: '8px 0 4px' };
-const cardHint: React.CSSProperties = { fontSize: '13px', color: '#6F6A62', margin: 0 };
-const sectionTitle: React.CSSProperties = { fontSize: '16px', fontWeight: 600, margin: '0 0 16px' };
-
-const table: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: '13px' };
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '8px 6px',
-  borderBottom: '1px solid #e5e5e5',
-  color: '#6F6A62',
-  fontWeight: 500,
-  fontSize: '12px',
-  whiteSpace: 'nowrap',
-};
-const td: React.CSSProperties = { padding: '8px 6px', borderBottom: '1px solid #f0f0f0', verticalAlign: 'top' };
-const num: React.CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap' };
+const num: CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap' };
+const tableStyle: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontFamily: SANS };
 
 /** "+12% vs last month", or null when there is nothing to compare against. */
-function percentChange(current: number, previous: number): { text: string; colour: string } | null {
-  if (previous <= 0) return current > 0 ? { text: 'New this month', colour: '#2E7D32' } : null;
+function percentChange(current: number, previous: number): { text: string; positive?: boolean } | null {
+  if (previous <= 0) return current > 0 ? { text: 'New this month', positive: true } : null;
   const change = ((current - previous) / previous) * 100;
   const rounded = Math.round(change);
   return {
     text: `${rounded >= 0 ? '+' : ''}${rounded}% vs last month`,
-    colour: rounded > 0 ? '#2E7D32' : rounded < 0 ? '#C0392B' : '#6F6A62',
+    positive: rounded > 0 ? true : rounded < 0 ? false : undefined,
   };
 }
 
@@ -57,14 +33,14 @@ function shortDate(date: string): string {
 
 function RevenueChart({ data }: { data: DailyRevenue[] }) {
   const width = 900;
-  const chartHeight = 120;
+  const chartHeight = 140;
   const top = 20;
   const left = 70;
   const bottom = 28;
   const height = top + chartHeight + bottom;
   const plotWidth = width - left - 10;
   const slot = plotWidth / Math.max(data.length, 1);
-  const barWidth = Math.max(slot * 0.7, 2);
+  const barWidth = Math.max(slot * 0.62, 2);
   const max = Math.max(...data.map((d) => d.revenue), 0);
   const baseline = top + chartHeight;
 
@@ -75,16 +51,15 @@ function RevenueChart({ data }: { data: DailyRevenue[] }) {
       role="img"
       aria-label="Daily revenue for the last 30 days"
     >
-      {/* Y axis: max value and zero */}
-      <line x1={left} y1={top} x2={left} y2={baseline} stroke="#e5e5e5" />
-      <line x1={left} y1={top} x2={width - 10} y2={top} stroke="#f0f0f0" strokeDasharray="4 4" />
+      <line x1={left} y1={top} x2={width - 10} y2={top} stroke="#EDE7DA" strokeDasharray="4 4" />
+      <line x1={left} y1={top + chartHeight / 2} x2={width - 10} y2={top + chartHeight / 2} stroke="#EDE7DA" strokeDasharray="4 4" />
       <text x={left - 8} y={top + 4} textAnchor="end" fontSize="11" fill="#6F6A62">
         {formatPrice(max)}
       </text>
       <text x={left - 8} y={baseline + 4} textAnchor="end" fontSize="11" fill="#6F6A62">
         {formatPrice(0)}
       </text>
-      <line x1={left} y1={baseline} x2={width - 10} y2={baseline} stroke="#e5e5e5" />
+      <line x1={left} y1={baseline} x2={width - 10} y2={baseline} stroke="#E4DACB" />
 
       {data.map((d, i) => {
         const isZero = d.revenue <= 0 || max <= 0;
@@ -92,14 +67,7 @@ function RevenueChart({ data }: { data: DailyRevenue[] }) {
         const x = left + i * slot + (slot - barWidth) / 2;
         return (
           <g key={d.date}>
-            <rect
-              x={x}
-              y={baseline - barHeight}
-              width={barWidth}
-              height={barHeight}
-              rx={1.5}
-              fill={isZero ? '#DDD8CF' : '#1C2230'}
-            >
+            <rect x={x} y={baseline - barHeight} width={barWidth} height={barHeight} fill={isZero ? '#E4DACB' : '#0F1623'}>
               <title>{`${shortDate(d.date)}: ${formatPrice(d.revenue)} (${d.orderCount} order${d.orderCount === 1 ? '' : 's'})`}</title>
             </rect>
             {i % 5 === 0 ? (
@@ -114,6 +82,8 @@ function RevenueChart({ data }: { data: DailyRevenue[] }) {
   );
 }
 
+const SUBTITLE = 'Sales, traffic, and customer insights';
+
 export default async function AdminAnalyticsPage() {
   let data: AnalyticsSummary | null = null;
   try {
@@ -124,11 +94,19 @@ export default async function AdminAnalyticsPage() {
 
   if (!data) {
     return (
-      <div>
-        <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '0 0 24px' }}>Analytics</h1>
-        <p style={{ ...card, borderColor: '#C8623D', color: '#C8623D' }}>
-          Could not load analytics from the database. Check the Firebase Admin settings in your environment variables.
-        </p>
+      <div style={{ fontFamily: SANS }}>
+        <PageHeader title="Analytics" subtitle={SUBTITLE} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+          {['Total Revenue', 'Orders', 'Conversion Rate', 'Avg Order Value'].map((label) => (
+            <StatCard key={label} label={label} value="—" />
+          ))}
+        </div>
+        <div role="alert" style={{ ...sectionCard, borderColor: '#E8C9BE', background: DANGER_BG, padding: 0 }}>
+          <EmptyState
+            title="Analytics unavailable"
+            description="Could not load analytics from the database. Check the Firebase Admin settings in your environment variables."
+          />
+        </div>
       </div>
     );
   }
@@ -137,64 +115,64 @@ export default async function AdminAnalyticsPage() {
   const last30Revenue = data.dailyRevenue.reduce((sum, d) => sum + d.revenue, 0);
   const repeatRate = Math.round(data.repeatCustomerRate * 10) / 10;
 
-  const stats: { label: string; value: string; hint: string; change?: { text: string; colour: string } | null }[] = [
-    { label: 'Total revenue', value: formatPrice(data.totalRevenue), hint: `All time · ${data.totalOrders} paid orders` },
-    {
-      label: 'This month revenue',
-      value: formatPrice(data.revenueThisMonth),
-      hint: `Last month: ${formatPrice(data.revenueLastMonth)}`,
-      change: revenueChange,
-    },
-    { label: 'Orders this month', value: String(data.ordersThisMonth), hint: 'Paid orders only' },
-    { label: 'Avg order value', value: formatPrice(Math.round(data.averageOrderValue)), hint: 'All time, paid orders' },
-  ];
-
   return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '0 0 8px' }}>Analytics</h1>
-      <p style={{ ...cardHint, marginBottom: '24px' }}>
+    <div style={{ fontFamily: SANS }}>
+      <style>{ADMIN_FORM_CSS}</style>
+      <PageHeader title="Analytics" subtitle={SUBTITLE} />
+      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '-16px 0 20px' }}>
         Paid orders only (confirmed, processing, shipped, delivered). Updates every 15 minutes or when an order changes.
       </p>
 
       {/* Row 1 — summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-        {stats.map((stat) => (
-          <div key={stat.label} style={card}>
-            <p style={cardValue}>{stat.value}</p>
-            <p style={cardLabel}>{stat.label}</p>
-            <p style={{ ...cardHint, marginTop: '8px' }}>{stat.hint}</p>
-            {stat.change ? (
-              <p style={{ ...cardHint, marginTop: '4px', color: stat.change.colour, fontWeight: 500 }}>{stat.change.text}</p>
-            ) : null}
-          </div>
-        ))}
+        <StatCard label="Total Revenue" value={formatPrice(data.totalRevenue)} subtitle={`All time · ${data.totalOrders} paid orders`} />
+        <StatCard
+          label="This Month Revenue"
+          value={formatPrice(data.revenueThisMonth)}
+          change={revenueChange?.text}
+          changePositive={revenueChange?.positive}
+          subtitle={`Last month: ${formatPrice(data.revenueLastMonth)}`}
+        />
+        <StatCard label="Orders This Month" value={String(data.ordersThisMonth)} subtitle="Paid orders only" />
+        <StatCard label="Avg Order Value" value={formatPrice(Math.round(data.averageOrderValue))} subtitle="All time, paid orders" />
       </div>
 
       {/* Row 2 — revenue chart */}
-      <div style={{ ...card, marginTop: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px' }}>
-          <h2 style={sectionTitle}>Revenue — last 30 days</h2>
-          <p style={cardHint}>{formatPrice(last30Revenue)} total</p>
+      <section style={{ ...sectionCard, marginTop: '24px' }}>
+        <div
+          style={{
+            ...sectionTitle,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            flexWrap: 'wrap',
+            gap: '8px',
+          }}
+        >
+          <h2 style={{ font: 'inherit', margin: 0 }}>Revenue — last 30 days</h2>
+          <span style={{ fontFamily: SANS, fontSize: '13px', fontWeight: 400, color: 'var(--admin-text-muted)' }}>
+            {formatPrice(last30Revenue)} total
+          </span>
         </div>
         <RevenueChart data={data.dailyRevenue} />
-      </div>
+      </section>
 
       {/* Row 3 — top products + top locations */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))',
           gap: '16px',
           marginTop: '24px',
           alignItems: 'start',
         }}
       >
-        <div style={{ ...card, overflowX: 'auto' }}>
-          <h2 style={sectionTitle}>Top products</h2>
+        <section style={{ ...sectionCard, padding: 0, overflowX: 'auto' }}>
+          <h2 style={{ ...sectionTitle, margin: 0, padding: '20px 20px 12px', borderBottom: 'none' }}>Top products</h2>
           {data.topProducts.length === 0 ? (
-            <p style={cardHint}>No paid orders yet.</p>
+            <EmptyState title="No paid orders yet" description="Best-selling products will appear here." />
           ) : (
-            <table style={table}>
+            <table style={tableStyle}>
               <thead>
                 <tr>
                   <th style={th}>#</th>
@@ -207,11 +185,11 @@ export default async function AdminAnalyticsPage() {
               </thead>
               <tbody>
                 {data.topProducts.map((product, index) => (
-                  <tr key={product.productId}>
-                    <td style={{ ...td, color: '#6F6A62' }}>{index + 1}</td>
+                  <tr key={product.productId} className="vl-row">
+                    <td style={{ ...td, color: 'var(--admin-text-subtle)' }}>{index + 1}</td>
                     <td style={td}>
                       {product.slug ? (
-                        <a href={`/product/${product.slug}`} style={{ color: '#1C2230' }}>
+                        <a href={`/product/${product.slug}`} style={{ color: 'var(--admin-text)', textDecoration: 'none', fontWeight: 500 }}>
                           {product.productName}
                         </a>
                       ) : (
@@ -227,14 +205,14 @@ export default async function AdminAnalyticsPage() {
               </tbody>
             </table>
           )}
-        </div>
+        </section>
 
-        <div style={{ ...card, overflowX: 'auto' }}>
-          <h2 style={sectionTitle}>Top locations</h2>
+        <section style={{ ...sectionCard, padding: 0, overflowX: 'auto' }}>
+          <h2 style={{ ...sectionTitle, margin: 0, padding: '20px 20px 12px', borderBottom: 'none' }}>Top locations</h2>
           {data.locationStats.length === 0 ? (
-            <p style={cardHint}>No paid orders yet.</p>
+            <EmptyState title="No paid orders yet" description="Cities with the most orders will appear here." />
           ) : (
-            <table style={table}>
+            <table style={tableStyle}>
               <thead>
                 <tr>
                   <th style={th}>City, State</th>
@@ -244,7 +222,7 @@ export default async function AdminAnalyticsPage() {
               </thead>
               <tbody>
                 {data.locationStats.map((location) => (
-                  <tr key={`${location.city}::${location.state}`}>
+                  <tr key={`${location.city}::${location.state}`} className="vl-row">
                     <td style={td}>{location.state ? `${location.city}, ${location.state}` : location.city}</td>
                     <td style={{ ...td, ...num }}>{location.orderCount}</td>
                     <td style={{ ...td, ...num }}>{formatPrice(location.revenue)}</td>
@@ -253,26 +231,26 @@ export default async function AdminAnalyticsPage() {
               </tbody>
             </table>
           )}
-        </div>
+        </section>
       </div>
 
       {/* Row 4 — repeat customers */}
-      <div style={{ ...card, marginTop: '24px' }}>
+      <section style={{ ...sectionCard, marginTop: '24px' }}>
         <h2 style={sectionTitle}>Repeat customers</h2>
-        <p style={{ fontSize: '15px', margin: '0 0 12px' }}>
-          <strong style={{ fontSize: '24px' }}>{repeatRate}%</strong> of customers have ordered more than once
+        <p style={{ fontSize: '14px', margin: '0 0 12px', color: 'var(--admin-text-muted)' }}>
+          <strong style={{ fontSize: '24px', fontWeight: 600, color: 'var(--admin-text)', marginRight: '6px' }}>{repeatRate}%</strong>
+          of customers have ordered more than once
         </p>
-        <div style={{ background: '#EEEAE3', borderRadius: '999px', height: '10px', overflow: 'hidden' }}>
+        <div style={{ background: '#EDE7DA', height: '8px', overflow: 'hidden' }}>
           <div
             style={{
               width: `${Math.min(Math.max(data.repeatCustomerRate, 0), 100)}%`,
               height: '100%',
-              background: '#1C2230',
-              borderRadius: '999px',
+              background: 'var(--admin-gold)',
             }}
           />
         </div>
-      </div>
+      </section>
     </div>
   );
 }

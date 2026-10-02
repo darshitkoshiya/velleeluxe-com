@@ -1,6 +1,24 @@
 'use client';
 
 import { useEffect, useState, type CSSProperties } from 'react';
+import PageHeader from '@/components/admin/ui/PageHeader';
+import StatusBadge from '@/components/admin/ui/StatusBadge';
+import EmptyState from '@/components/admin/ui/EmptyState';
+import {
+  ADMIN_TABLE_CSS,
+  DANGER,
+  OK,
+  SANS,
+  btn,
+  card,
+  fieldInput,
+  fieldLabel,
+  sectionLabel,
+  tableFrame,
+  tableStyle,
+  td,
+  th,
+} from '@/components/admin/ui/admin-styles';
 
 /** Mirrors DiscountCode in lib/types.ts. */
 type DiscountCode = {
@@ -26,92 +44,17 @@ type FormState = {
 
 const EMPTY_FORM: FormState = { code: '', type: 'percent', value: '', minOrderAmount: '', maxUses: '', expiresAt: '' };
 
-const sectionStyle: CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e5e5',
-  borderRadius: '8px',
-  padding: '24px',
-};
-
-const capsHeading: CSSProperties = {
-  fontSize: '13px',
-  fontWeight: 600,
-  margin: '0 0 16px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
-  color: '#6F6A62',
-};
-
-const labelStyle: CSSProperties = { display: 'block', fontSize: '14px', fontWeight: 600, margin: '0 0 6px' };
-
-const inputStyle: CSSProperties = {
-  width: '100%',
-  boxSizing: 'border-box',
-  padding: '10px 12px',
-  fontSize: '15px',
-  border: '1px solid #ccc',
-  borderRadius: '6px',
-  background: '#fff',
-  fontFamily: 'inherit',
-  color: '#1C2230',
-};
-
-const thStyle: CSSProperties = {
-  textAlign: 'left',
-  fontSize: '12px',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-  color: '#6F6A62',
-  padding: '10px 12px',
-  borderBottom: '1px solid #e5e5e5',
-  whiteSpace: 'nowrap',
-};
-
-const tdStyle: CSSProperties = {
-  fontSize: '14px',
-  padding: '12px',
-  borderBottom: '1px solid #f0f0f0',
-  verticalAlign: 'middle',
-  whiteSpace: 'nowrap',
-};
-
-function primaryButton(disabled: boolean): CSSProperties {
-  return {
-    background: '#1C2230',
-    color: '#F6F1E8',
-    border: 'none',
-    borderRadius: '6px',
-    padding: '12px 24px',
-    fontSize: '14px',
-    fontWeight: 500,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.5 : 1,
-  };
-}
-
-function smallButton(disabled: boolean): CSSProperties {
-  return {
-    background: 'transparent',
-    color: '#1C2230',
-    border: '1px solid #ccc',
-    borderRadius: '6px',
-    padding: '7px 12px',
-    fontSize: '13px',
-    fontWeight: 500,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.5 : 1,
-  };
-}
+const labelStyle: CSSProperties = fieldLabel;
+const inputStyle: CSSProperties = fieldInput;
 
 function toggleStyle(on: boolean, disabled: boolean): CSSProperties {
   return {
     position: 'relative',
-    width: '44px',
-    height: '24px',
+    width: '36px',
+    height: '20px',
     borderRadius: '999px',
     border: 'none',
-    background: on ? '#1E6B45' : '#ccc',
+    background: on ? OK : '#D6D0C4',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,
     padding: 0,
@@ -123,9 +66,9 @@ function knobStyle(on: boolean): CSSProperties {
   return {
     position: 'absolute',
     top: '3px',
-    left: on ? '23px' : '3px',
-    width: '18px',
-    height: '18px',
+    left: on ? '19px' : '3px',
+    width: '14px',
+    height: '14px',
     borderRadius: '50%',
     background: '#fff',
     transition: 'left 0.15s',
@@ -272,47 +215,45 @@ export default function AdminDiscountCodesPage() {
     }
   };
 
+  const toggleForm = () => {
+    setShowForm((open) => !open);
+    setError(null);
+    setMessage(null);
+  };
+
   return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '16px',
-          flexWrap: 'wrap',
-          margin: '0 0 24px',
-        }}
-      >
-        <h1 style={{ fontSize: '24px', fontWeight: 600, margin: 0 }}>Discount Codes</h1>
-        <button
-          type="button"
-          onClick={() => {
-            setShowForm((open) => !open);
-            setError(null);
-            setMessage(null);
-          }}
-          disabled={loading || saving}
-          style={primaryButton(loading || saving)}
-        >
-          {showForm ? 'Close' : '+ Create Code'}
-        </button>
-      </div>
+    <div style={{ fontFamily: SANS }}>
+      <style>{ADMIN_TABLE_CSS}</style>
+
+      <PageHeader
+        title="Discount Codes"
+        subtitle={loading ? 'Loading codes…' : `${codes.length} ${codes.length === 1 ? 'code' : 'codes'}`}
+        actions={
+          <button
+            type="button"
+            onClick={toggleForm}
+            disabled={loading || saving}
+            style={btn(showForm ? 'secondary' : 'primary', { disabled: loading || saving })}
+          >
+            {showForm ? 'Close' : '+ New Code'}
+          </button>
+        }
+      />
 
       {message ? (
-        <p role="status" style={{ margin: '0 0 16px', fontSize: '14px', color: '#1E6B45' }}>
+        <p role="status" style={{ margin: '0 0 16px', fontSize: '13px', color: OK }}>
           {message}
         </p>
       ) : null}
       {error ? (
-        <p role="alert" style={{ margin: '0 0 16px', fontSize: '14px', color: '#9A3B1E' }}>
+        <p role="alert" style={{ margin: '0 0 16px', fontSize: '13px', color: DANGER }}>
           {error}
         </p>
       ) : null}
 
       {showForm ? (
-        <section style={{ ...sectionStyle, marginBottom: '24px', maxWidth: '640px' }}>
-          <h2 style={capsHeading}>Create Code</h2>
+        <section style={{ ...card, padding: '24px', marginBottom: '24px', maxWidth: '640px' }}>
+          <h2 style={{ ...sectionLabel, marginBottom: '16px' }}>Create Code</h2>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -322,7 +263,7 @@ export default function AdminDiscountCodesPage() {
           >
             <div>
               <label htmlFor="dc-code" style={labelStyle}>
-                Code <span style={{ color: '#9A3B1E' }}>*</span>
+                Code <span style={{ color: DANGER }}>*</span>
               </label>
               <input
                 id="dc-code"
@@ -335,12 +276,12 @@ export default function AdminDiscountCodesPage() {
                 onChange={(event) => updateField('code', event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                 style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '0.05em' }}
               />
-              <p style={{ fontSize: '13px', color: '#6F6A62', margin: '6px 0 0' }}>3–20 letters or numbers.</p>
+              <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '6px 0 0' }}>3–20 letters or numbers.</p>
             </div>
 
             <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
               <legend style={labelStyle}>Type</legend>
-              <div style={{ display: 'flex', gap: '20px', fontSize: '14px' }}>
+              <div style={{ display: 'flex', gap: '20px', fontSize: '14px', color: 'var(--admin-text)' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                   <input
                     type="radio"
@@ -364,10 +305,10 @@ export default function AdminDiscountCodesPage() {
               </div>
             </fieldset>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px' }}>
               <div>
                 <label htmlFor="dc-value" style={labelStyle}>
-                  {form.type === 'percent' ? 'Percent off' : 'Amount off (₹)'} <span style={{ color: '#9A3B1E' }}>*</span>
+                  {form.type === 'percent' ? 'Percent off' : 'Amount off (₹)'} <span style={{ color: DANGER }}>*</span>
                 </label>
                 <input
                   id="dc-value"
@@ -431,8 +372,8 @@ export default function AdminDiscountCodesPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saveDisabled} style={primaryButton(saveDisabled)}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <button type="submit" disabled={saveDisabled} style={btn('primary', { disabled: saveDisabled })}>
                 {saving ? 'Creating…' : 'Create Code'}
               </button>
               <button
@@ -442,7 +383,7 @@ export default function AdminDiscountCodesPage() {
                   setForm(EMPTY_FORM);
                 }}
                 disabled={saving}
-                style={{ ...smallButton(saving), padding: '11px 20px', fontSize: '14px' }}
+                style={btn('secondary', { disabled: saving })}
               >
                 Cancel
               </button>
@@ -451,54 +392,81 @@ export default function AdminDiscountCodesPage() {
         </section>
       ) : null}
 
-      <section style={sectionStyle}>
-        <h2 style={capsHeading}>All Codes</h2>
+      <div style={tableFrame}>
         {loading ? (
-          <p style={{ margin: 0, color: '#6F6A62' }}>Loading…</p>
+          <p style={{ margin: 0, padding: '48px 24px', textAlign: 'center', fontSize: '13px', color: 'var(--admin-text-muted)' }}>
+            Loading codes…
+          </p>
         ) : codes.length === 0 ? (
-          <p style={{ margin: 0, color: '#6F6A62', fontSize: '14px' }}>No discount codes yet. Create your first code.</p>
+          <EmptyState
+            title="No discount codes"
+            description="Create a code to offer customers a percentage or fixed amount off at checkout."
+            action={
+              !showForm ? (
+                <button type="button" onClick={toggleForm} style={btn('primary')}>
+                  + Create Code
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>Code</th>
-                  <th style={thStyle}>Type</th>
-                  <th style={thStyle}>Value</th>
-                  <th style={thStyle}>Min Order</th>
-                  <th style={thStyle}>Uses</th>
-                  <th style={thStyle}>Expires</th>
-                  <th style={thStyle}>Active</th>
-                  <th style={thStyle}>
-                    <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
-                      Delete
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {codes.map((discount) => {
-                  const busy = busyCode === discount.code;
-                  const expiry = formatExpiry(discount.expiresAt);
-                  const usedUp = typeof discount.maxUses === 'number' && discount.usedCount >= discount.maxUses;
-                  return (
-                    <tr key={discount.code}>
-                      <td style={{ ...tdStyle, fontWeight: 600, letterSpacing: '0.04em' }}>{discount.code}</td>
-                      <td style={tdStyle}>{discount.type === 'percent' ? '% off' : '₹ off'}</td>
-                      <td style={tdStyle}>{discount.type === 'percent' ? `${discount.value}%` : rupees(discount.value)}</td>
-                      <td style={tdStyle}>
-                        {typeof discount.minOrderAmount === 'number' && discount.minOrderAmount > 0
-                          ? rupees(discount.minOrderAmount)
-                          : '—'}
-                      </td>
-                      <td style={{ ...tdStyle, color: usedUp ? '#9A3B1E' : undefined }}>
-                        {discount.usedCount ?? 0} / {typeof discount.maxUses === 'number' ? discount.maxUses : '∞'}
-                      </td>
-                      <td style={{ ...tdStyle, color: expiry.expired ? '#9A3B1E' : undefined }}>
-                        {expiry.text}
-                        {expiry.expired ? ' (expired)' : ''}
-                      </td>
-                      <td style={tdStyle}>
+          <table style={{ ...tableStyle, minWidth: '860px' }}>
+            <thead>
+              <tr>
+                <th style={th}>Code</th>
+                <th style={th}>Discount</th>
+                <th style={th}>Type</th>
+                <th style={th}>Uses / Limit</th>
+                <th style={th}>Expiry</th>
+                <th style={th}>Status</th>
+                <th style={{ ...th, textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {codes.map((discount) => {
+                const busy = busyCode === discount.code;
+                const expiry = formatExpiry(discount.expiresAt);
+                const usedUp = typeof discount.maxUses === 'number' && discount.usedCount >= discount.maxUses;
+                const statusKey = !discount.active ? 'inactive' : expiry.expired ? 'expired' : usedUp ? 'used_up' : 'active';
+                return (
+                  <tr key={discount.code} className="vl-row">
+                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          letterSpacing: '0.06em',
+                          padding: '3px 8px',
+                          border: '1px dashed var(--admin-border)',
+                          borderRadius: '4px',
+                          background: '#F9F6F0',
+                          fontSize: '12px',
+                        }}
+                      >
+                        {discount.code}
+                      </span>
+                    </td>
+                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: 600 }}>
+                        {discount.type === 'percent' ? `${discount.value}% off` : `${rupees(discount.value)} off`}
+                      </div>
+                      {typeof discount.minOrderAmount === 'number' && discount.minOrderAmount > 0 ? (
+                        <div style={{ fontSize: '12px', color: 'var(--admin-text-muted)', marginTop: '2px' }}>
+                          Min order {rupees(discount.minOrderAmount)}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--admin-text-muted)' }}>
+                      {discount.type === 'percent' ? 'Percentage' : 'Fixed amount'}
+                    </td>
+                    <td style={{ ...td, whiteSpace: 'nowrap', color: usedUp ? DANGER : undefined }}>
+                      {discount.usedCount ?? 0} / {typeof discount.maxUses === 'number' ? discount.maxUses : '∞'}
+                    </td>
+                    <td style={{ ...td, whiteSpace: 'nowrap', color: expiry.expired ? DANGER : undefined }}>
+                      {expiry.text}
+                      {expiry.expired ? ' (expired)' : ''}
+                    </td>
+                    <td style={td}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}>
                         <button
                           type="button"
                           role="switch"
@@ -510,51 +478,53 @@ export default function AdminDiscountCodesPage() {
                         >
                           <span style={knobStyle(discount.active)} />
                         </button>
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>
-                        {confirmDelete === discount.code ? (
-                          <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
-                            <button
-                              type="button"
-                              onClick={() => void remove(discount.code)}
-                              disabled={busy}
-                              style={{ ...smallButton(busy), background: '#9A3B1E', color: '#fff', border: '1px solid #9A3B1E' }}
-                            >
-                              {busy ? 'Deleting…' : 'Confirm'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDelete(null)}
-                              disabled={busy}
-                              style={smallButton(busy)}
-                            >
-                              Cancel
-                            </button>
-                          </span>
-                        ) : (
+                        <StatusBadge status={statusKey} size="sm" />
+                      </span>
+                    </td>
+                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {confirmDelete === discount.code ? (
+                        <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
                           <button
                             type="button"
-                            onClick={() => {
-                              setConfirmDelete(discount.code);
-                              setError(null);
-                              setMessage(null);
-                            }}
+                            onClick={() => void remove(discount.code)}
                             disabled={busy}
-                            aria-label={`Delete ${discount.code}`}
-                            style={{ ...smallButton(busy), color: '#9A3B1E' }}
+                            style={btn('danger', { size: 'sm', disabled: busy })}
                           >
-                            Delete
+                            {busy ? 'Deleting…' : 'Confirm'}
                           </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete(null)}
+                            disabled={busy}
+                            style={btn('secondary', { size: 'sm', disabled: busy })}
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmDelete(discount.code);
+                            setError(null);
+                            setMessage(null);
+                          }}
+                          disabled={busy}
+                          aria-label={`Delete ${discount.code}`}
+                          style={btn('dangerOutline', { size: 'sm', disabled: busy })}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
-      </section>
+      </div>
     </div>
   );
 }
+

@@ -37,8 +37,14 @@ function getAdminApp(): App {
 export function getAdminDb(): Firestore {
   if (!firestoreInstance) {
     firestoreInstance = getFirestore(getAdminApp());
-    // Optional fields (e.g. address line 2) may be undefined — skip them instead of erroring.
-    firestoreInstance.settings({ ignoreUndefinedProperties: true });
+    try {
+      // Optional fields (e.g. address line 2) may be undefined — skip them instead of erroring.
+      // Wrapped in try-catch: in dev hot-reload the SDK instance persists across module re-evaluations,
+      // so settings() would throw "already initialized" even though firestoreInstance was reset to null.
+      firestoreInstance.settings({ ignoreUndefinedProperties: true });
+    } catch {
+      // Already configured — safe to ignore
+    }
   }
   return firestoreInstance;
 }

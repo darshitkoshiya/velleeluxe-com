@@ -3,6 +3,8 @@
  * Built from the orders collection on every request.
  */
 import CustomersTable from '@/components/admin/CustomersTable';
+import PageHeader from '@/components/admin/ui/PageHeader';
+import { DANGER, DANGER_BG, DANGER_BORDER, SANS } from '@/components/admin/ui/admin-styles';
 import { getCustomers } from '@/lib/customers';
 
 export const dynamic = 'force-dynamic';
@@ -18,17 +20,31 @@ export default async function AdminCustomersPage() {
   }
 
   return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 600, margin: '0 0 4px' }}>Customers</h1>
+    <div style={{ fontFamily: SANS }}>
+      <PageHeader
+        title="Customers"
+        subtitle={
+          error
+            ? undefined
+            : `${customers.length} ${customers.length === 1 ? 'customer' : 'customers'} with at least one order`
+        }
+      />
       {error ? (
-        <p role="alert" style={{ margin: '0 0 16px', fontSize: '14px', color: '#9A3B1E' }}>{error}</p>
+        <div
+          role="alert"
+          style={{
+            background: DANGER_BG,
+            color: DANGER,
+            border: `1px solid ${DANGER_BORDER}`,
+            borderRadius: '6px',
+            padding: '12px 16px',
+            fontSize: '13px',
+          }}
+        >
+          {error}
+        </div>
       ) : (
-        <>
-          <p style={{ fontSize: '14px', color: '#6F6A62', margin: '0 0 24px' }}>
-            {customers.length} {customers.length === 1 ? 'customer' : 'customers'} with at least one order
-          </p>
-          <CustomersTable customers={customers} />
-        </>
+        <CustomersTable customers={customers} />
       )}
     </div>
   );
