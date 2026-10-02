@@ -1,17 +1,16 @@
 /**
- * Storefront product access with a placeholder fallback.
+ * Storefront product access.
  *
- * Reads the Firestore catalogue (lib/catalog-storefront.ts): if it returns no
- * live products (or fails), the mock catalogue from lib/products-mock.ts is
- * shown instead so the shop never looks empty. Server-only.
+ * Reads exclusively from the Firestore catalogue (lib/catalog-storefront.ts).
+ * No placeholder fallback: if Firestore has no live products (or fails), the
+ * shop shows no products. Server-only.
  */
 import { getCatalogWithOverrides } from './catalog-storefront';
-import { getMockProductBySlug, MOCK_BEST_SELLER_IDS, mockProducts } from './products-mock';
 import type { ColourVariant, Product } from './types';
 
 export interface Catalog {
   products: Product[];
-  /** True when the placeholder products are being shown. */
+  /** Always false: placeholder products are no longer shown. Kept for callers. */
   isMock: boolean;
 }
 
@@ -28,11 +27,11 @@ export async function getLiveCatalogProducts(): Promise<Product[]> {
 export async function getCatalog(): Promise<Catalog> {
   try {
     const products = await getLiveCatalogProducts();
-    if (products.length > 0) return { products, isMock: false };
+    return { products, isMock: false };
   } catch (error) {
-    console.error('[catalog] Failed to load products, using placeholders:', error);
+    console.error('[catalog] Failed to load products:', error);
+    return { products: [], isMock: false };
   }
-  return { products: mockProducts, isMock: true };
 }
 
 export async function getCatalogProducts(): Promise<Product[]> {
@@ -40,10 +39,8 @@ export async function getCatalogProducts(): Promise<Product[]> {
 }
 
 export async function getCatalogProductBySlug(slug: string): Promise<Product | null> {
-  const { products, isMock } = await getCatalog();
-  const found = products.find((product) => product.slug === slug);
-  if (found) return found;
-  return isMock ? getMockProductBySlug(slug) : null;
+  const { products } = await getCatalog();
+  return products.find((product) => product.slug === slug) ?? null;
 }
 
 /** All products sharing the same designId (including the given product itself). */
@@ -72,9 +69,9 @@ export function buildColourVariantMap(products: Product[]): Record<string, Colou
   return map;
 }
 
-/** IDs to mark "Best Seller". Only placeholders have this data for now. */
+/** IDs to mark "Best Seller". No real best-seller data yet, so none are marked. */
 export function getBestSellerIds(): string[] {
-  return Array.from(MOCK_BEST_SELLER_IDS);
+  return [];
 }
 
 /** Up to `count` products related by fabric (style), then fit, excluding the product itself. */
