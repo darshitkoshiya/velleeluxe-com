@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { getProducts } from '@/lib/sheets';
+import { getCatalogProducts } from '@/lib/catalog-storefront';
 import { SITE_URL } from '@/lib/utils';
 
 export const revalidate = 3600;
@@ -18,7 +18,7 @@ const STATIC_PATHS = [
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const products = await getProducts();
+  const products = await getCatalogProducts();
   const now = new Date();
 
   return [

@@ -1,14 +1,13 @@
 /**
  * Storefront product access with a placeholder fallback.
  *
- * Wraps lib/sheets.ts: if the sheet returns no live products (or fails),
- * the mock catalogue from lib/products-mock.ts is shown instead so the shop
- * never looks empty. Server-only.
+ * Reads the Firestore catalogue (lib/catalog-storefront.ts): if it returns no
+ * live products (or fails), the mock catalogue from lib/products-mock.ts is
+ * shown instead so the shop never looks empty. Server-only.
  */
-import { getProducts } from './sheets';
+import { getCatalogWithOverrides } from './catalog-storefront';
 import { getMockProductBySlug, MOCK_BEST_SELLER_IDS, mockProducts } from './products-mock';
-import { applyOverrides, getManualProducts, getProductOverrides, visibleManualProducts } from './product-overrides';
-import type { ColourVariant, ManualProduct, Product, ProductOverride } from './types';
+import type { ColourVariant, Product } from './types';
 
 export interface Catalog {
   products: Product[];
@@ -17,23 +16,13 @@ export interface Catalog {
 }
 
 /**
- * Real products only (no placeholders): sheet products with admin overrides applied
- * (hidden ones removed), followed by non-hidden manual products. If Firestore is
- * unavailable, sheet products are returned unchanged.
+ * Real products only (no placeholders): non-hidden manual products followed by
+ * active Firestore catalogue listings with admin overrides applied (hidden ones
+ * removed). Also used by checkout (lib/orders.ts) to price orders, so checkout
+ * charges what the shop shows. Throws if the Firestore catalogue can't be read.
  */
 export async function getLiveCatalogProducts(): Promise<Product[]> {
-  const [sheetProducts, overrides, manual] = await Promise.all([
-    getProducts(),
-    getProductOverrides().catch((error): Map<string, ProductOverride> => {
-      console.error('[catalog] Could not load product overrides:', error);
-      return new Map();
-    }),
-    getManualProducts().catch((error): ManualProduct[] => {
-      console.error('[catalog] Could not load manual products:', error);
-      return [];
-    }),
-  ]);
-  return [...applyOverrides(sheetProducts, overrides), ...visibleManualProducts(manual)];
+  return (await getCatalogWithOverrides()).products;
 }
 
 export async function getCatalog(): Promise<Catalog> {

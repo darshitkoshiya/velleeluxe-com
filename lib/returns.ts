@@ -17,7 +17,7 @@ import { getOrder } from './orders';
 import { verifyReturnPhotos } from './photo-verification';
 import { getRazorpay } from './razorpay';
 import { sendReturnConfirmation } from './resend';
-import { getProductsByIds } from './sheets';
+import { getCatalogProductsByIds } from './catalog-storefront';
 import { assertAdminTpin, storeCreditRef, writeStoreCreditEntry } from './store-credit';
 import {
   decisionsFor,
@@ -177,7 +177,7 @@ export async function createReturn(
     if (request.requestedSize === item.size.toUpperCase()) {
       throw new ReturnValidationError('Please choose a different size from the one you received.');
     }
-    const [product] = await getProductsByIds([item.productId]).catch(() => []);
+    const [product] = await getCatalogProductsByIds([item.productId]).catch(() => []);
     const inStock = product && (product.stock === 'unlimited' || product.stock > 0);
     if (!product || !inStock || !product.sizes.map((size) => size.toUpperCase()).includes(request.requestedSize ?? '')) {
       throw new ReturnValidationError('That size is not available right now. Choose "My size is not available" to get store credit instead.', 409);
