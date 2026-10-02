@@ -3,6 +3,7 @@ import { getCatalogProducts } from '@/lib/catalog-storefront';
 import { SITE_URL } from '@/lib/utils';
 
 export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
 
 // /privacy and /returns are redirect aliases, so the canonical policy URLs are listed instead.
 const STATIC_PATHS = [
@@ -18,7 +19,12 @@ const STATIC_PATHS = [
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const products = await getCatalogProducts();
+  let products: Awaited<ReturnType<typeof getCatalogProducts>> = [];
+  try {
+    products = await getCatalogProducts();
+  } catch {
+    // Firestore unavailable (quota, outage) — serve static paths only
+  }
   const now = new Date();
 
   return [
